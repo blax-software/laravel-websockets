@@ -1,15 +1,22 @@
 {
-    "name": "beyondcode/laravel-websockets",
+    "name": "blax-software/laravel-websockets",
     "description": "An easy to launch a Pusher-compatible WebSockets server for Laravel.",
     "keywords": [
+        "blax-software",
         "beyondcode",
         "laravel-websockets",
         "laravel",
         "php"
     ],
     "license": "MIT",
-    "homepage": "https://github.com/beyondcode/laravel-websockets",
+    "homepage": "https://github.com/blax-software/laravel-websockets",
     "authors": [
+        {
+            "name": "Blax Software",
+            "email": "office@blax.at",
+            "homepage": "https://www.blax.at",
+            "role": "Developer"
+        },
         {
             "name": "Marcel Pociot",
             "email": "marcel@beyondco.de",
