@@ -40,7 +40,7 @@
         "blax-software/websocket-ratchet": "dev-master",
         "clue/reactphp-sqlite": "^1.0",
         "clue/redis-react": "^2.6",
-        "doctrine/dbal": "^2.9",
+        "doctrine/dbal": "^2|^3|^4",
         "evenement/evenement": "^2.0|^3.0",
         "facade/ignition-contracts": "^1.0",
         "guzzlehttp/psr7": "*",
