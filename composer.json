@@ -38,7 +38,6 @@
     "require": {
         "php": "^8.0|^8.1",
         "cboden/ratchet": "*",
-        "clue/block-react": "^1.5",
         "clue/reactphp-sqlite": "^1.0",
         "clue/redis-react": "^2.6",
         "doctrine/dbal": "^2.9",
@@ -52,13 +51,14 @@
         "illuminate/routing": "^9.0|^10.0|^10.0|^11.0",
         "illuminate/support": "^9.0|^10.0|^10.0|^11.0",
         "pusher/pusher-php-server": "^6.0|^7.0",
+        "react/async": "^4.3",
+        "react/http": "^1.11",
         "react/mysql": "^0.5",
         "react/promise": "^2.8",
         "symfony/http-kernel": "*",
         "symfony/psr-http-message-bridge": "*"
     },
     "require-dev": {
-        "clue/buzz-react": "^2.9",
         "laravel/legacy-factories": "^1.1",
         "orchestra/testbench-browser-kit": "^7.0",
         "phpunit/phpunit": "^9.0",
