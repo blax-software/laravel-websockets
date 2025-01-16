@@ -54,8 +54,8 @@
         "pusher/pusher-php-server": "^6.0|^7.0",
         "react/mysql": "^0.5",
         "react/promise": "^2.8",
-        "symfony/http-kernel": "^6.0|^7.0",
-        "symfony/psr-http-message-bridge": "^1.1|^2.0"
+        "symfony/http-kernel": "*",
+        "symfony/psr-http-message-bridge": "*"
     },
     "require-dev": {
         "clue/buzz-react": "^2.9",
