@@ -13,6 +13,7 @@ class CreateWebSocketsAppsTable extends Migration
      */
     public function up()
     {
+        Schema::dropIfExists('websockets_apps');
         Schema::create('websockets_apps', function (Blueprint $table) {
             $table->string('id')->index();
             $table->string('key');

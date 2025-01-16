@@ -1,10 +1,10 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Test\Dashboard;
+namespace BlaxSoftware\LaravelWebSockets\Test\Dashboard;
 
-use BeyondCode\LaravelWebSockets\Test\Mocks\SignedMessage;
-use BeyondCode\LaravelWebSockets\Test\Models\User;
-use BeyondCode\LaravelWebSockets\Test\TestCase;
+use BlaxSoftware\LaravelWebSockets\Test\Mocks\SignedMessage;
+use BlaxSoftware\LaravelWebSockets\Test\Models\User;
+use BlaxSoftware\LaravelWebSockets\Test\TestCase;
 
 class AuthTest extends TestCase
 {

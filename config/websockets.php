@@ -10,24 +10,19 @@ return [
     | You can configure the dashboard settings from here.
     |
     */
+    'port' => env('LARAVEL_WEBSOCKETS_PORT', env('PUSHER_PORT', 6001)),
 
     'dashboard' => [
-
-        'port' => env('LARAVEL_WEBSOCKETS_PORT', 6001),
-
+        'port' => env('LARAVEL_WEBSOCKETS_PORT', env('PUSHER_PORT', 6001)),
         'domain' => env('LARAVEL_WEBSOCKETS_DOMAIN'),
-
         'path' => env('LARAVEL_WEBSOCKETS_PATH', 'laravel-websockets'),
-
         'middleware' => [
             'web',
-            \BeyondCode\LaravelWebSockets\Dashboard\Http\Middleware\Authorize::class,
+            \BlaxSoftware\LaravelWebSockets\Dashboard\Http\Middleware\Authorize::class,
         ],
-
     ],
 
     'managers' => [
-
         /*
         |--------------------------------------------------------------------------
         | Application Manager
@@ -41,8 +36,7 @@ return [
         | custom application manager.
         |
         */
-
-        'app' => \BeyondCode\LaravelWebSockets\Apps\ConfigAppManager::class,
+        'app' => \BlaxSoftware\LaravelWebSockets\Apps\ConfigAppManager::class,
 
         /*
         |--------------------------------------------------------------------------
@@ -52,7 +46,6 @@ return [
         | The SQLite database to use when using the SQLite application manager.
         |
         */
-
         'sqlite' => [
             'database' => storage_path('laravel-websockets.sqlite'),
         ],
@@ -65,10 +58,8 @@ return [
         | The MySQL database connection to use.
         |
         */
-
         'mysql' => [
             'connection' => env('DB_CONNECTION', 'mysql'),
-
             'table' => 'websockets_apps',
         ],
     ],
@@ -87,7 +78,6 @@ return [
     | client-to-client messages or statistics.
     |
     */
-
     'apps' => [
         [
             'id' => env('PUSHER_APP_ID'),
@@ -97,8 +87,8 @@ return [
             'secret' => env('PUSHER_APP_SECRET'),
             'path' => env('PUSHER_APP_PATH'),
             'capacity' => null,
-            'enable_client_messages' => false,
-            'enable_statistics' => true,
+            'enable_client_messages' => true,
+            'enable_statistics' => false,
             'allowed_origins' => [
                 // env('LARAVEL_WEBSOCKETS_DOMAIN'),
             ],
@@ -124,79 +114,23 @@ return [
         'mode' => env('WEBSOCKETS_REPLICATION_MODE', 'local'),
 
         'modes' => [
-
-            /*
-            |--------------------------------------------------------------------------
-            | Local Replication
-            |--------------------------------------------------------------------------
-            |
-            | Local replication is actually a null replicator, meaning that it
-            | is the default behaviour of storing the connections into an array.
-            |
-            */
-
             'local' => [
-
-                /*
-                |--------------------------------------------------------------------------
-                | Channel Manager
-                |--------------------------------------------------------------------------
-                |
-                | The channel manager is responsible for storing, tracking and retrieving
-                | the channels as long as their members and connections.
-                |
-                */
-
-                'channel_manager' => \BeyondCode\LaravelWebSockets\ChannelManagers\LocalChannelManager::class,
-
-                /*
-                |--------------------------------------------------------------------------
-                | Statistics Collector
-                |--------------------------------------------------------------------------
-                |
-                | The Statistics Collector will, by default, handle the incoming statistics,
-                | storing them until they will become dumped into another database, usually
-                | a MySQL database or a time-series database.
-                |
-                */
-
-                'collector' => \BeyondCode\LaravelWebSockets\Statistics\Collectors\MemoryCollector::class,
-
+                'channel_manager' => \BlaxSoftware\LaravelWebSockets\ChannelManagers\LocalChannelManager::class,
+                'collector' => \BlaxSoftware\LaravelWebSockets\Statistics\Collectors\MemoryCollector::class,
             ],
 
             'redis' => [
-
                 'connection' => env('WEBSOCKETS_REDIS_REPLICATION_CONNECTION', 'default'),
-
-                /*
-                |--------------------------------------------------------------------------
-                | Channel Manager
-                |--------------------------------------------------------------------------
-                |
-                | The channel manager is responsible for storing, tracking and retrieving
-                | the channels as long as their members and connections.
-                |
-                */
-
-                'channel_manager' => \BeyondCode\LaravelWebSockets\ChannelManagers\RedisChannelManager::class,
-
-                /*
-                |--------------------------------------------------------------------------
-                | Statistics Collector
-                |--------------------------------------------------------------------------
-                |
-                | The Statistics Collector will, by default, handle the incoming statistics,
-                | storing them until they will become dumped into another database, usually
-                | a MySQL database or a time-series database.
-                |
-                */
-
-                'collector' => \BeyondCode\LaravelWebSockets\Statistics\Collectors\RedisCollector::class,
-
+                'channel_manager' => \BlaxSoftware\LaravelWebSockets\ChannelManagers\RedisChannelManager::class,
+                'collector' => \BlaxSoftware\LaravelWebSockets\Statistics\Collectors\RedisCollector::class,
             ],
 
+            'custom' => [
+                'connection' => env('WEBSOCKETS_REDIS_REPLICATION_CONNECTION', 'default'),
+                'channel_manager' => \BlaxSoftware\LaravelWebSockets\Websocket\ChannelManager::class,
+                'collector' => BlaxSoftware\LaravelWebSockets\Statistics\Collectors\MemoryCollector::class,
+            ],
         ],
-
     ],
 
     'statistics' => [
@@ -212,7 +146,7 @@ return [
         |
         */
 
-        'store' => \BeyondCode\LaravelWebSockets\Statistics\Stores\DatabaseStore::class,
+        'store' => \BlaxSoftware\LaravelWebSockets\Statistics\Stores\DatabaseStore::class,
 
         /*
         |--------------------------------------------------------------------------
@@ -250,7 +184,7 @@ return [
     |
     */
 
-    'max_request_size_in_kb' => 250,
+    'max_request_size_in_kb' => 2048,
 
     /*
     |--------------------------------------------------------------------------
@@ -265,19 +199,12 @@ return [
     */
 
     'ssl' => [
-
         'local_cert' => env('LARAVEL_WEBSOCKETS_SSL_LOCAL_CERT', null),
-
         'capath' => env('LARAVEL_WEBSOCKETS_SSL_CA', null),
-
         'local_pk' => env('LARAVEL_WEBSOCKETS_SSL_LOCAL_PK', null),
-
         'passphrase' => env('LARAVEL_WEBSOCKETS_SSL_PASSPHRASE', null),
-
         'verify_peer' => env('APP_ENV') === 'production',
-
-        'allow_self_signed' => env('APP_ENV') !== 'production',
-
+        'allow_self_signed' => true,
     ],
 
     /*
@@ -294,17 +221,17 @@ return [
 
     'handlers' => [
 
-        'websocket' => \BeyondCode\LaravelWebSockets\Server\WebSocketHandler::class,
+        'websocket' => \BlaxSoftware\LaravelWebSockets\Server\WebSocketHandler::class,
 
-        'health' => \BeyondCode\LaravelWebSockets\Server\HealthHandler::class,
+        'health' => \BlaxSoftware\LaravelWebSockets\Server\HealthHandler::class,
 
-        'trigger_event' => \BeyondCode\LaravelWebSockets\API\TriggerEvent::class,
+        'trigger_event' => \BlaxSoftware\LaravelWebSockets\API\TriggerEvent::class,
 
-        'fetch_channels' => \BeyondCode\LaravelWebSockets\API\FetchChannels::class,
+        'fetch_channels' => \BlaxSoftware\LaravelWebSockets\API\FetchChannels::class,
 
-        'fetch_channel' => \BeyondCode\LaravelWebSockets\API\FetchChannel::class,
+        'fetch_channel' => \BlaxSoftware\LaravelWebSockets\API\FetchChannel::class,
 
-        'fetch_users' => \BeyondCode\LaravelWebSockets\API\FetchUsers::class,
+        'fetch_users' => \BlaxSoftware\LaravelWebSockets\API\FetchUsers::class,
 
     ],
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Server\Exceptions;
+namespace BlaxSoftware\LaravelWebSockets\Server\Exceptions;
 
 class UnknownAppKey extends WebSocketException
 {

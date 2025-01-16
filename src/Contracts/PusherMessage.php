@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Contracts;
+namespace BlaxSoftware\LaravelWebSockets\Contracts;
 
 interface PusherMessage
 {

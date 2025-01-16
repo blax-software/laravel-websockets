@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Queue;
+namespace BlaxSoftware\LaravelWebSockets\Queue;
 
-use BeyondCode\LaravelWebSockets\Contracts\ChannelManager;
+use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
 use Illuminate\Queue\RedisQueue;
 
 class AsyncRedisQueue extends RedisQueue
@@ -10,7 +10,7 @@ class AsyncRedisQueue extends RedisQueue
     /**
      * Get the connection for the queue.
      *
-     * @return \BeyondCode\LaravelWebSockets\Contracts\ChannelManager|\Illuminate\Redis\Connections\Connection
+     * @return \BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager|\Illuminate\Redis\Connections\Connection
      */
     public function getConnection()
     {

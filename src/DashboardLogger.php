@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets;
+namespace BlaxSoftware\LaravelWebSockets;
 
-use BeyondCode\LaravelWebSockets\Contracts\ChannelManager;
+use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
 
 class DashboardLogger
 {

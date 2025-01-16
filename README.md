@@ -7,13 +7,16 @@ Bring the power of WebSockets to your Laravel application. Drop-in Pusher replac
 
 ## Documentation
 
+### Features
+* Laravel native event broadcasting
+* Async with pcntl_fork
+* SSL support
+* Laravel Echo support
+* Docker & Traefik capable
+
 ### Changelog
 
 Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
-
-## Contributing
-
-~Please see [CONTRIBUTING](CONTRIBUTING.md) for details.~
 
 ### Security
 
@@ -21,7 +24,7 @@ If you discover any security related issues, please email office@blax.at or the 
 
 ## Credits
 
-- [Marcel Pociot](https://github.com/mpociot)
+- [Marcel Pociot (beyondco.de)](https://github.com/mpociot)
 - [Freek Van der Herten](https://github.com/freekmurze)
 - [All Contributors](../../contributors)
 

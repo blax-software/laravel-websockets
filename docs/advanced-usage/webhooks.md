@@ -15,7 +15,7 @@ For example, running your own business logic on connection open and close:
 ```php
 namespace App\Controllers\WebSockets;
 
-use BeyondCode\LaravelWebSockets\WebSockets\WebSocketHandler as BaseWebSocketHandler;
+use BlaxSoftware\LaravelWebSockets\WebSockets\WebSocketHandler as BaseWebSocketHandler;
 use Ratchet\ConnectionInterface;
 
 class WebSocketHandler extends BaseWebSocketHandler

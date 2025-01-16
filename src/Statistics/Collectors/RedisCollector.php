@@ -1,9 +1,9 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Statistics\Collectors;
+namespace BlaxSoftware\LaravelWebSockets\Statistics\Collectors;
 
-use BeyondCode\LaravelWebSockets\Helpers;
-use BeyondCode\LaravelWebSockets\Statistics\Statistic;
+use BlaxSoftware\LaravelWebSockets\Helpers;
+use BlaxSoftware\LaravelWebSockets\Statistics\Statistic;
 use Illuminate\Cache\RedisLock;
 use Illuminate\Support\Facades\Redis;
 use React\Promise\PromiseInterface;
@@ -235,7 +235,7 @@ class RedisCollector extends MemoryCollector
      * Get the saved statistics for an app.
      *
      * @param  string|int  $appId
-     * @return PromiseInterface[\BeyondCode\LaravelWebSockets\Statistics\Statistic|null]
+     * @return PromiseInterface[\BlaxSoftware\LaravelWebSockets\Statistics\Statistic|null]
      */
     public function getAppStatistics($appId): PromiseInterface
     {
@@ -361,7 +361,7 @@ class RedisCollector extends MemoryCollector
      *
      * @param  string|int  $appId
      * @param  array  $stats
-     * @return \BeyondCode\LaravelWebSockets\Statistics\Statistic
+     * @return \BlaxSoftware\LaravelWebSockets\Statistics\Statistic
      */
     protected function arrayToStatisticInstance($appId, array $stats)
     {

@@ -70,12 +70,12 @@
     },
     "autoload": {
         "psr-4": {
-            "BeyondCode\\LaravelWebSockets\\": "src/"
+            "BlaxSoftware\\LaravelWebSockets\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "BeyondCode\\LaravelWebSockets\\Test\\": "tests"
+            "BlaxSoftware\\LaravelWebSockets\\Test\\": "tests"
         }
     },
     "scripts": {
@@ -89,10 +89,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "BeyondCode\\LaravelWebSockets\\WebSocketsServiceProvider"
+                "BlaxSoftware\\LaravelWebSockets\\WebSocketsServiceProvider"
             ],
             "aliases": {
-                "WebSocketRouter": "BeyondCode\\LaravelWebSockets\\Facades\\WebSocketRouter"
+                "WebSocketRouter": "BlaxSoftware\\LaravelWebSockets\\Facades\\WebSocketRouter"
             }
         }
     }

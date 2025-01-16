@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Apps;
+namespace BlaxSoftware\LaravelWebSockets\Apps;
 
-use BeyondCode\LaravelWebSockets\Contracts\AppManager;
+use BlaxSoftware\LaravelWebSockets\Contracts\AppManager;
 use Clue\React\SQLite\DatabaseInterface;
 use Clue\React\SQLite\Result;
 use React\Promise\Deferred;
@@ -110,7 +110,7 @@ class SQLiteAppManager implements AppManager
      * Map the app into an App instance.
      *
      * @param  array|null  $app
-     * @return \BeyondCode\LaravelWebSockets\Apps\App|null
+     * @return \BlaxSoftware\LaravelWebSockets\Apps\App|null
      */
     protected function convertIntoApp(?array $appAttributes): ?App
     {

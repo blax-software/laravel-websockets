@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\API;
+namespace BlaxSoftware\LaravelWebSockets\API;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;

@@ -11,23 +11,23 @@ Depending on your setup, you might have your app configuration stored elsewhere 
 
 > Make sure that you do **not** perform any IO blocking tasks in your `AppManager`, as they will interfere with the asynchronous WebSocket execution.
 
-In order to create your custom `AppManager`, create a class that implements the `BeyondCode\LaravelWebSockets\Contracts\AppManager` interface.
+In order to create your custom `AppManager`, create a class that implements the `BlaxSoftware\LaravelWebSockets\Contracts\AppManager` interface.
 
 This is what it looks like:
 
 ```php
 interface AppManager
 {
-    /**  @return array[BeyondCode\LaravelWebSockets\Apps\App] */
+    /**  @return array[BlaxSoftware\LaravelWebSockets\Apps\App] */
     public function all(): array;
 
-    /**  @return BeyondCode\LaravelWebSockets\Apps\App */
+    /**  @return BlaxSoftware\LaravelWebSockets\Apps\App */
     public function findById($appId): ?App;
 
-    /**  @return BeyondCode\LaravelWebSockets\Apps\App */
+    /**  @return BlaxSoftware\LaravelWebSockets\Apps\App */
     public function findByKey($appKey): ?App;
 
-    /**  @return BeyondCode\LaravelWebSockets\Apps\App */
+    /**  @return BlaxSoftware\LaravelWebSockets\Apps\App */
     public function findBySecret($appSecret): ?App;
 }
 ```
@@ -37,8 +37,8 @@ The following is an example AppManager that utilizes an Eloquent model:
 namespace App\Managers;
 
 use App\Application;
-use BeyondCode\LaravelWebSockets\Apps\App;
-use BeyondCode\LaravelWebSockets\Contracts\AppManager;
+use BlaxSoftware\LaravelWebSockets\Apps\App;
+use BlaxSoftware\LaravelWebSockets\Contracts\AppManager;
 
 class MyCustomAppManager implements AppManager
 {

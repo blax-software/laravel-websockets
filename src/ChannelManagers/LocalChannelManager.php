@@ -1,13 +1,13 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\ChannelManagers;
+namespace BlaxSoftware\LaravelWebSockets\ChannelManagers;
 
-use BeyondCode\LaravelWebSockets\Cache\ArrayLock;
-use BeyondCode\LaravelWebSockets\Channels\Channel;
-use BeyondCode\LaravelWebSockets\Channels\PresenceChannel;
-use BeyondCode\LaravelWebSockets\Channels\PrivateChannel;
-use BeyondCode\LaravelWebSockets\Contracts\ChannelManager;
-use BeyondCode\LaravelWebSockets\Helpers;
+use BlaxSoftware\LaravelWebSockets\Cache\ArrayLock;
+use BlaxSoftware\LaravelWebSockets\Channels\Channel;
+use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
+use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
+use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
+use BlaxSoftware\LaravelWebSockets\Helpers;
 use Carbon\Carbon;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Support\Str;
@@ -88,7 +88,7 @@ class LocalChannelManager implements ChannelManager
      *
      * @param  string|int  $appId
      * @param  string  $channel
-     * @return null|BeyondCode\LaravelWebSockets\Channels\Channel
+     * @return null|BlaxSoftware\LaravelWebSockets\Channels\Channel
      */
     public function find($appId, string $channel)
     {
@@ -100,7 +100,7 @@ class LocalChannelManager implements ChannelManager
      *
      * @param  string|int  $appId
      * @param  string  $channel
-     * @return BeyondCode\LaravelWebSockets\Channels\Channel
+     * @return BlaxSoftware\LaravelWebSockets\Channels\Channel
      */
     public function findOrCreate($appId, string $channel)
     {

@@ -1,9 +1,9 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\API;
+namespace BlaxSoftware\LaravelWebSockets\API;
 
-use BeyondCode\LaravelWebSockets\DashboardLogger;
-use BeyondCode\LaravelWebSockets\Facades\StatisticsCollector;
+use BlaxSoftware\LaravelWebSockets\DashboardLogger;
+use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector;
 use Illuminate\Http\Request;
 use React\Promise\Deferred;
 use React\Promise\PromiseInterface;

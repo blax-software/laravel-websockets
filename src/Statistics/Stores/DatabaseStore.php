@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Statistics\Stores;
+namespace BlaxSoftware\LaravelWebSockets\Statistics\Stores;
 
-use BeyondCode\LaravelWebSockets\Contracts\StatisticsStore;
+use BlaxSoftware\LaravelWebSockets\Contracts\StatisticsStore;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -14,7 +14,7 @@ class DatabaseStore implements StatisticsStore
      *
      * @var string
      */
-    public static $model = \BeyondCode\LaravelWebSockets\Models\WebSocketsStatisticsEntry::class;
+    public static $model = \BlaxSoftware\LaravelWebSockets\Models\WebSocketsStatisticsEntry::class;
 
     /**
      * Store a new record in the database and return

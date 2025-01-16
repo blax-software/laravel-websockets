@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Apps;
+namespace BlaxSoftware\LaravelWebSockets\Apps;
 
-use BeyondCode\LaravelWebSockets\Contracts\AppManager;
+use BlaxSoftware\LaravelWebSockets\Contracts\AppManager;
 use React\Promise\PromiseInterface;
 
 class App

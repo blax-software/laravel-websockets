@@ -1,9 +1,9 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Test;
+namespace BlaxSoftware\LaravelWebSockets\Test;
 
-use BeyondCode\LaravelWebSockets\API\TriggerEvent;
-use BeyondCode\LaravelWebSockets\Server\Exceptions\InvalidSignature;
+use BlaxSoftware\LaravelWebSockets\API\TriggerEvent;
+use BlaxSoftware\LaravelWebSockets\Server\Exceptions\InvalidSignature;
 use GuzzleHttp\Psr7\Request;
 use Illuminate\Http\JsonResponse;
 use Pusher\Pusher;

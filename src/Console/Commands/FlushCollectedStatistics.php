@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Console\Commands;
+namespace BlaxSoftware\LaravelWebSockets\Console\Commands;
 
-use BeyondCode\LaravelWebSockets\Facades\StatisticsCollector;
+use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector;
 use Illuminate\Console\Command;
 
 class FlushCollectedStatistics extends Command

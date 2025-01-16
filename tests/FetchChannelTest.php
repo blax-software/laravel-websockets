@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Test;
+namespace BlaxSoftware\LaravelWebSockets\Test;
 
-use BeyondCode\LaravelWebSockets\API\FetchChannel;
+use BlaxSoftware\LaravelWebSockets\API\FetchChannel;
 use GuzzleHttp\Psr7\Request;
 use Illuminate\Http\JsonResponse;
 use Pusher\Pusher;

@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Server;
+namespace BlaxSoftware\LaravelWebSockets\Server;
 
 use Exception;
 use GuzzleHttp\Psr7\Message;

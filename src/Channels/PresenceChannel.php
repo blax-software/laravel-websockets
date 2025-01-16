@@ -1,12 +1,12 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Channels;
+namespace BlaxSoftware\LaravelWebSockets\Channels;
 
-use BeyondCode\LaravelWebSockets\DashboardLogger;
-use BeyondCode\LaravelWebSockets\Events\SubscribedToChannel;
-use BeyondCode\LaravelWebSockets\Events\UnsubscribedFromChannel;
-use BeyondCode\LaravelWebSockets\Helpers;
-use BeyondCode\LaravelWebSockets\Server\Exceptions\InvalidSignature;
+use BlaxSoftware\LaravelWebSockets\DashboardLogger;
+use BlaxSoftware\LaravelWebSockets\Events\SubscribedToChannel;
+use BlaxSoftware\LaravelWebSockets\Events\UnsubscribedFromChannel;
+use BlaxSoftware\LaravelWebSockets\Helpers;
+use BlaxSoftware\LaravelWebSockets\Server\Exceptions\InvalidSignature;
 use Ratchet\ConnectionInterface;
 use React\Promise\PromiseInterface;
 use stdClass;

@@ -1,18 +1,18 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets;
+namespace BlaxSoftware\LaravelWebSockets;
 
-use BeyondCode\LaravelWebSockets\Contracts\StatisticsCollector;
-use BeyondCode\LaravelWebSockets\Contracts\StatisticsStore;
-use BeyondCode\LaravelWebSockets\Dashboard\Http\Controllers\AuthenticateDashboard;
-use BeyondCode\LaravelWebSockets\Dashboard\Http\Controllers\SendMessage;
-use BeyondCode\LaravelWebSockets\Dashboard\Http\Controllers\ShowApps;
-use BeyondCode\LaravelWebSockets\Dashboard\Http\Controllers\ShowDashboard;
-use BeyondCode\LaravelWebSockets\Dashboard\Http\Controllers\ShowStatistics;
-use BeyondCode\LaravelWebSockets\Dashboard\Http\Controllers\StoreApp;
-use BeyondCode\LaravelWebSockets\Dashboard\Http\Middleware\Authorize as AuthorizeDashboard;
-use BeyondCode\LaravelWebSockets\Queue\AsyncRedisConnector;
-use BeyondCode\LaravelWebSockets\Server\Router;
+use BlaxSoftware\LaravelWebSockets\Contracts\StatisticsCollector;
+use BlaxSoftware\LaravelWebSockets\Contracts\StatisticsStore;
+use BlaxSoftware\LaravelWebSockets\Dashboard\Http\Controllers\AuthenticateDashboard;
+use BlaxSoftware\LaravelWebSockets\Dashboard\Http\Controllers\SendMessage;
+use BlaxSoftware\LaravelWebSockets\Dashboard\Http\Controllers\ShowApps;
+use BlaxSoftware\LaravelWebSockets\Dashboard\Http\Controllers\ShowDashboard;
+use BlaxSoftware\LaravelWebSockets\Dashboard\Http\Controllers\ShowStatistics;
+use BlaxSoftware\LaravelWebSockets\Dashboard\Http\Controllers\StoreApp;
+use BlaxSoftware\LaravelWebSockets\Dashboard\Http\Middleware\Authorize as AuthorizeDashboard;
+use BlaxSoftware\LaravelWebSockets\Queue\AsyncRedisConnector;
+use BlaxSoftware\LaravelWebSockets\Server\Router;
 use Clue\React\SQLite\DatabaseInterface;
 use Clue\React\SQLite\Factory as SQLiteFactory;
 use Illuminate\Support\Facades\Gate;

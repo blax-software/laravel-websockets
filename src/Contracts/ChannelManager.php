@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Contracts;
+namespace BlaxSoftware\LaravelWebSockets\Contracts;
 
 use Ratchet\ConnectionInterface;
 use React\EventLoop\LoopInterface;
@@ -23,7 +23,7 @@ interface ChannelManager
      *
      * @param  string|int  $appId
      * @param  string  $channel
-     * @return null|BeyondCode\LaravelWebSockets\Channels\Channel
+     * @return null|BlaxSoftware\LaravelWebSockets\Channels\Channel
      */
     public function find($appId, string $channel);
 
@@ -32,7 +32,7 @@ interface ChannelManager
      *
      * @param  string|int  $appId
      * @param  string  $channel
-     * @return BeyondCode\LaravelWebSockets\Channels\Channel
+     * @return BlaxSoftware\LaravelWebSockets\Channels\Channel
      */
     public function findOrCreate($appId, string $channel);
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Test\Mocks;
+namespace BlaxSoftware\LaravelWebSockets\Test\Mocks;
 
 use Clue\React\Redis\Factory;
 use Clue\Redis\Protocol\Factory as ProtocolFactory;

@@ -16,7 +16,7 @@ The package will automatically register a service provider.
 You need to publish the WebSocket configuration file:
 
 ```bash
-php artisan vendor:publish --provider="BeyondCode\LaravelWebSockets\WebSocketsServiceProvider" --tag="config"
+php artisan vendor:publish --provider="BlaxSoftware\LaravelWebSockets\WebSocketsServiceProvider" --tag="config"
 ```
 
 # Statistics
@@ -26,7 +26,7 @@ This package comes with migrations to store statistic information while running 
 You can publish the migration file using:
 
 ```bash
-php artisan vendor:publish --provider="BeyondCode\LaravelWebSockets\WebSocketsServiceProvider" --tag="migrations"
+php artisan vendor:publish --provider="BlaxSoftware\LaravelWebSockets\WebSocketsServiceProvider" --tag="migrations"
 ```
 
 Run the migrations with:

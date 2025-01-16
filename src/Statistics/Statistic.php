@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Statistics;
+namespace BlaxSoftware\LaravelWebSockets\Statistics;
 
-use BeyondCode\LaravelWebSockets\Apps\App;
+use BlaxSoftware\LaravelWebSockets\Apps\App;
 use React\Promise\Deferred;
 use React\Promise\PromiseInterface;
 
@@ -58,7 +58,7 @@ class Statistic
      * Create a new statistic instance.
      *
      * @param  string|int  $appId
-     * @return \BeyondCode\LaravelWebSockets\Statistics\Statistic
+     * @return \BlaxSoftware\LaravelWebSockets\Statistics\Statistic
      */
     public static function new($appId)
     {

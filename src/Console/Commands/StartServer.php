@@ -1,14 +1,14 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Console\Commands;
+namespace BlaxSoftware\LaravelWebSockets\Console\Commands;
 
-use BeyondCode\LaravelWebSockets\Contracts\ChannelManager;
-use BeyondCode\LaravelWebSockets\Facades\StatisticsCollector as StatisticsCollectorFacade;
-use BeyondCode\LaravelWebSockets\Facades\WebSocketRouter;
-use BeyondCode\LaravelWebSockets\Server\Loggers\ConnectionLogger;
-use BeyondCode\LaravelWebSockets\Server\Loggers\HttpLogger;
-use BeyondCode\LaravelWebSockets\Server\Loggers\WebSocketsLogger;
-use BeyondCode\LaravelWebSockets\ServerFactory;
+use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
+use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector as StatisticsCollectorFacade;
+use BlaxSoftware\LaravelWebSockets\Facades\WebSocketRouter;
+use BlaxSoftware\LaravelWebSockets\Server\Loggers\ConnectionLogger;
+use BlaxSoftware\LaravelWebSockets\Server\Loggers\HttpLogger;
+use BlaxSoftware\LaravelWebSockets\Server\Loggers\WebSocketsLogger;
+use BlaxSoftware\LaravelWebSockets\ServerFactory;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use React\EventLoop\Factory as LoopFactory;
@@ -301,7 +301,7 @@ class StartServer extends Command
     protected function getLastRestart()
     {
         return Cache::get(
-            'beyondcode:websockets:restart', 0
+            'blax:websockets:restart', 0
         );
     }
 

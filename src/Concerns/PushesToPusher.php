@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Concerns;
+namespace BlaxSoftware\LaravelWebSockets\Concerns;
 
 use Illuminate\Broadcasting\Broadcasters\PusherBroadcaster;
 use Pusher\Pusher;

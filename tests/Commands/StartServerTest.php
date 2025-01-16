@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Test\Commands;
+namespace BlaxSoftware\LaravelWebSockets\Test\Commands;
 
-use BeyondCode\LaravelWebSockets\Test\TestCase;
+use BlaxSoftware\LaravelWebSockets\Test\TestCase;
 
 class StartServerTest extends TestCase
 {

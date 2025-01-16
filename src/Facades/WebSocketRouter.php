@@ -1,6 +1,6 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Facades;
+namespace BlaxSoftware\LaravelWebSockets\Facades;
 
 use Illuminate\Support\Facades\Facade;
 

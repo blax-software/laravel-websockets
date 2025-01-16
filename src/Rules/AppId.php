@@ -1,8 +1,8 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Rules;
+namespace BlaxSoftware\LaravelWebSockets\Rules;
 
-use BeyondCode\LaravelWebSockets\Contracts\AppManager;
+use BlaxSoftware\LaravelWebSockets\Contracts\AppManager;
 use Illuminate\Contracts\Validation\Rule;
 use React\EventLoop\Factory;
 

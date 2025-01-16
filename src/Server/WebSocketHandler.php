@@ -1,16 +1,16 @@
 <?php
 
-namespace BeyondCode\LaravelWebSockets\Server;
+namespace BlaxSoftware\LaravelWebSockets\Server;
 
-use BeyondCode\LaravelWebSockets\Apps\App;
-use BeyondCode\LaravelWebSockets\Contracts\ChannelManager;
-use BeyondCode\LaravelWebSockets\DashboardLogger;
-use BeyondCode\LaravelWebSockets\Events\ConnectionClosed;
-use BeyondCode\LaravelWebSockets\Events\NewConnection;
-use BeyondCode\LaravelWebSockets\Events\WebSocketMessageReceived;
-use BeyondCode\LaravelWebSockets\Facades\StatisticsCollector;
-use BeyondCode\LaravelWebSockets\Helpers;
-use BeyondCode\LaravelWebSockets\Server\Exceptions\WebSocketException;
+use BlaxSoftware\LaravelWebSockets\Apps\App;
+use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
+use BlaxSoftware\LaravelWebSockets\DashboardLogger;
+use BlaxSoftware\LaravelWebSockets\Events\ConnectionClosed;
+use BlaxSoftware\LaravelWebSockets\Events\NewConnection;
+use BlaxSoftware\LaravelWebSockets\Events\WebSocketMessageReceived;
+use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector;
+use BlaxSoftware\LaravelWebSockets\Helpers;
+use BlaxSoftware\LaravelWebSockets\Server\Exceptions\WebSocketException;
 use Exception;
 use Ratchet\ConnectionInterface;
 use Ratchet\RFC6455\Messaging\MessageInterface;
@@ -30,7 +30,7 @@ class WebSocketHandler implements MessageComponentInterface
     /**
      * Initialize a new handler.
      *
-     * @param  \BeyondCode\LaravelWebSockets\Contracts\ChannelManager  $channelManager
+     * @param  \BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager  $channelManager
      * @return void
      */
     public function __construct(ChannelManager $channelManager)
