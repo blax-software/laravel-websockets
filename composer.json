@@ -37,7 +37,7 @@
     ],
     "require": {
         "php": "^8.0|^8.1",
-        "cboden/ratchet": "^0.4.4",
+        "cboden/ratchet": "*",
         "clue/block-react": "^1.5",
         "clue/reactphp-sqlite": "^1.0",
         "clue/redis-react": "^2.6",
