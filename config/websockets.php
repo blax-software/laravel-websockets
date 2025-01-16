@@ -221,7 +221,7 @@ return [
 
     'handlers' => [
 
-        'websocket' => \BlaxSoftware\LaravelWebSockets\Server\WebSocketHandler::class,
+        'websocket' => \BlaxSoftware\LaravelWebSockets\Websocket\Handler::class,
 
         'health' => \BlaxSoftware\LaravelWebSockets\Server\HealthHandler::class,
 
