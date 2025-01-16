@@ -56,7 +56,8 @@
         "react/mysql": "^0.5",
         "react/promise": "^2.8",
         "symfony/http-kernel": "*",
-        "symfony/psr-http-message-bridge": "*"
+        "symfony/psr-http-message-bridge": "*",
+        "symfony/routing": "^6.0 || ^7.2"
     },
     "require-dev": {
         "laravel/legacy-factories": "^1.1",
