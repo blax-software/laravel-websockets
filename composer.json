@@ -37,7 +37,7 @@
     ],
     "require": {
         "php": "^8.0|^8.1",
-        "cboden/ratchet": "*",
+        "blax-software/websocket-ratchet": "dev-master",
         "clue/reactphp-sqlite": "^1.0",
         "clue/redis-react": "^2.6",
         "doctrine/dbal": "^2.9",
@@ -56,8 +56,7 @@
         "react/mysql": "^0.5",
         "react/promise": "^2.8",
         "symfony/http-kernel": "*",
-        "symfony/psr-http-message-bridge": "*",
-        "symfony/routing": "^6.0 || ^7.2"
+        "symfony/psr-http-message-bridge": "*"
     },
     "require-dev": {
         "laravel/legacy-factories": "^1.1",
