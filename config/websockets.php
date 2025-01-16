@@ -111,7 +111,7 @@ return [
 
     'replication' => [
 
-        'mode' => env('WEBSOCKETS_REPLICATION_MODE', 'local'),
+        'mode' => env('WEBSOCKETS_REPLICATION_MODE', 'custom'),
 
         'modes' => [
             'local' => [
