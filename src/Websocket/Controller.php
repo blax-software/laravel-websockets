@@ -40,14 +40,19 @@ class Controller
         }
 
         try {
-            $controller = (strpos($event[0], '-') >= 0)
+            $contr = (strpos($event[0], '-') >= 0)
                 ? implode('', array_map(fn ($item) => ucfirst($item), explode('-', $event[0])))
                 : ucfirst($event[0]);
 
-            $controller = '\BlaxSoftware\LaravelWebSockets\Websocket\Controllers\\' . $controller . 'Controller';
+            $vendorcontroller = '\BlaxSoftware\LaravelWebSockets\Websocket\Controllers\\' . $contr . 'Controller';
+            $appcontroller = '\App\Websocket\Controllers\\' . $contr . 'Controller';
             $method = static::without_uniquifyer($event[1]);
 
-            if (! class_exists($controller)) {
+            $controller = class_exists($appcontroller)
+                ? $appcontroller
+                : $vendorcontroller;
+
+            if (! $controller) {
                 return $connection->send(json_encode([
                     'event' => $message['event'] . ':error',
                     'data' => [
