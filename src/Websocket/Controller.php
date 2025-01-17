@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace BlaxSoftware\LaravelWebSockets\Websocket;
 
-use Auth;
 use BlaxSoftware\LaravelWebSockets\ChannelManagers\LocalChannelManager;
 use BlaxSoftware\LaravelWebSockets\ChannelManagers\RedisChannelManager;
 use BlaxSoftware\LaravelWebSockets\Channels\Channel;
 use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
 use Ratchet\ConnectionInterface;
+use Illuminate\Support\Facades\Log;
 
 class Controller
 {
@@ -107,7 +107,7 @@ class Controller
                 'channel' => @$message['channel'],
                 'line' => $e->getFile() . ':' . $e->getLine(),
             ];
-            \Log::error($e->getMessage(), $reload);
+            Log::error($e->getMessage(), $reload);
 
             return $connection->send(json_encode([
                 'event' => $message['event'] . ':error',
@@ -222,7 +222,7 @@ class Controller
             : null;
 
         // log
-        \Log::channel('websocket')->error('Send error: ' . $p['data']['message'], $p);
+        Log::channel('websocket')->error('Send error: ' . $p['data']['message'], $p);
 
         if (get_class($this->connection) === MockConnection::class) {
             $connection = clone $this->connection;

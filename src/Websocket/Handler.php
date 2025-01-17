@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace BlaxSoftware\LaravelWebSockets\Websocket;
 
-use App\Models\Tenant;
-use Auth;
 use BlaxSoftware\LaravelWebSockets\Apps\App;
 use BlaxSoftware\LaravelWebSockets\Channels\Channel;
 use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
@@ -21,7 +19,8 @@ use BlaxSoftware\LaravelWebSockets\Server\Exceptions\WebSocketException as Excep
 use BlaxSoftware\LaravelWebSockets\Server\Messages\PusherMessageFactory;
 use BlaxSoftware\LaravelWebSockets\Server\QueryParameters;
 use Exception;
-use Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Ratchet\ConnectionInterface;
 use Ratchet\RFC6455\Messaging\MessageInterface;
 use Ratchet\WebSocket\MessageComponentInterface;
@@ -45,11 +44,11 @@ class Handler implements MessageComponentInterface
             return $connection->close();
         }
 
-        $this->verifyAppKey($connection)
-            ->verifyOrigin($connection)
-            ->limitConcurrentConnections($connection)
-            ->generateSocketId($connection)
-            ->establishConnection($connection);
+        $this->verifyAppKey($connection);
+        $this->verifyOrigin($connection);
+        $this->limitConcurrentConnections($connection);
+        $this->generateSocketId($connection);
+        $this->establishConnection($connection);
 
         if (isset($connection->app)) {
             $this->channelManager->subscribeToApp($connection->app->id);
@@ -86,7 +85,7 @@ class Handler implements MessageComponentInterface
 
         if (! $channel = $this->get_connection_channel($connection, $message)) {
             return $connection->send(json_encode([
-                'event' => $message['event'] . ':error',
+                'event' => $message['event'].':error',
                 'data' => [
                     'message' => 'Channel not found',
                     'meta' => $message,
@@ -96,7 +95,7 @@ class Handler implements MessageComponentInterface
 
         $this->authenticateConnection($connection, $channel, $message);
 
-        Log::channel('websocket')->info('Executing event: ' . $message['event']);
+        Log::channel('websocket')->info('Executing event: '.$message['event']);
 
         if (strpos($message['event'], 'pusher') !== false) {
             try {
@@ -108,7 +107,7 @@ class Handler implements MessageComponentInterface
                 );
             } catch (Exception $e) {
                 return $connection->send(json_encode([
-                    'event' => $message['event'] . ':error',
+                    'event' => $message['event'].':error',
                     'data' => [
                         'message' => $e->getMessage(),
                     ],
@@ -122,7 +121,7 @@ class Handler implements MessageComponentInterface
             Log::error('Fork error');
         } elseif ($pid == 0) {
             try {
-                \DB::reconnect();
+                DB::reconnect();
 
                 $this->setRequest($message, $connection);
                 $mock = new MockConnection($connection);
@@ -135,7 +134,7 @@ class Handler implements MessageComponentInterface
                 );
             } catch (Exception $e) {
                 $mock->send(json_encode([
-                    'event' => $message['event'] . ':error',
+                    'event' => $message['event'].':error',
                     'data' => [
                         'message' => $e->getMessage(),
                     ],
@@ -151,7 +150,7 @@ class Handler implements MessageComponentInterface
     /**
      * Handle the websocket close.
      */
-    public function onClose(ConnectionInterface $connection) : void
+    public function onClose(ConnectionInterface $connection): void
     {
         if (optional($connection)->tenant) {
             if (optional($connection->tenant)->tenantable) {
@@ -172,16 +171,16 @@ class Handler implements MessageComponentInterface
             }
 
             cache()->forget(
-                'ws_socket_tenantable_' . $connection->socketId,
+                'ws_socket_tenantable_'.$connection->socketId,
             );
 
             if (@$this->channel_connections[$channel]) {
                 cache()->forever(
-                    'ws_channel_connections_' . $channel,
+                    'ws_channel_connections_'.$channel,
                     @$this->channel_connections[$channel]
                 );
             } else {
-                cache()->forget('ws_channel_connections_' . $channel);
+                cache()->forget('ws_channel_connections_'.$channel);
             }
 
             cache()->forever(
@@ -192,13 +191,13 @@ class Handler implements MessageComponentInterface
 
         $this->channelManager
             ->unsubscribeFromAllChannels($connection)
-            ->then(function (bool $unsubscribed) use ($connection) : void {
+            ->then(function (bool $unsubscribed) use ($connection): void {
                 if (isset($connection->app)) {
                     $this->channelManager->unsubscribeFromApp($connection->app->id);
 
                     ConnectionClosed::dispatch($connection->app->id, $connection->socketId);
 
-                    cache()->forget('ws_connection_' . $connection->socketId);
+                    cache()->forget('ws_connection_'.$connection->socketId);
                 }
             });
     }
@@ -208,7 +207,7 @@ class Handler implements MessageComponentInterface
      *
      * @param  WebSocketException  $exception
      */
-    public function onError(ConnectionInterface $connection, Exception $exception) : void
+    public function onError(ConnectionInterface $connection, Exception $exception): void
     {
         if ($exception instanceof ExceptionsWebSocketException) {
             $connection->send(json_encode(
@@ -221,7 +220,7 @@ class Handler implements MessageComponentInterface
      * Check if the connection can be made for the
      * current server instance.
      */
-    protected function connectionCanBeMade(ConnectionInterface $connection) : bool
+    protected function connectionCanBeMade(ConnectionInterface $connection): bool
     {
         return $this->channelManager->acceptsNewConnections();
     }
@@ -241,7 +240,9 @@ class Handler implements MessageComponentInterface
             throw new UnknownAppKey($appKey);
         }
 
-        $connection->app = $app;
+        $app->then(function ($app) use ($connection) {
+            $connection->app = $app;
+        });
 
         return $this;
     }
@@ -278,7 +279,7 @@ class Handler implements MessageComponentInterface
         if (! is_null($capacity = $connection->app->capacity)) {
             $this->channelManager
                 ->getGlobalConnectionsCount($connection->app->id)
-                ->then(function ($connectionsCount) use ($capacity, $connection) : void {
+                ->then(function ($connectionsCount) use ($capacity, $connection): void {
                     if ($connectionsCount >= $capacity) {
                         $exception = new ConnectionsOverCapacity;
 
@@ -324,7 +325,7 @@ class Handler implements MessageComponentInterface
         return $this;
     }
 
-    protected function get_connection_channel(&$connection, &$message) : ?PrivateChannel
+    protected function get_connection_channel(&$connection, &$message): ?PrivateChannel
     {
         // Put channel on its place
         if (! @$message['channel'] && $message['data'] && $message['data']['channel']) {
@@ -359,7 +360,7 @@ class Handler implements MessageComponentInterface
             }
 
             cache()->forever(
-                'ws_channel_connections_' . $channel_name,
+                'ws_channel_connections_'.$channel_name,
                 $this->channel_connections[$channel_name]
             );
 
@@ -380,11 +381,11 @@ class Handler implements MessageComponentInterface
 
             if (@$this->channel_connections[$channel_name]) {
                 cache()->forever(
-                    'ws_channel_connections_' . $channel_name,
+                    'ws_channel_connections_'.$channel_name,
                     $this->channel_connections[$channel_name]
                 );
             } else {
-                cache()->forget('ws_channel_connections_' . $channel_name);
+                cache()->forget('ws_channel_connections_'.$channel_name);
             }
 
             cache()->forever(
@@ -428,37 +429,12 @@ class Handler implements MessageComponentInterface
         PrivateChannel|Channel|PresenceChannel|null $channel,
         $message
     ) {
-        if (! optional($connection)->tenant && isset($message['data']['tenant'])) {
-            $tenant = Tenant::where('slug', $message['data']['tenant'])->first();
 
-            if (! $tenant) {
-                return $connection->send(json_encode([
-                    'channel' => $message['channel'],
-                    'event' => $message['event'] . ':error',
-                    'data' => [
-                        'message' => 'No tenant has been supplied',
-                    ],
-                ]));
-            }
+        if (! optional($connection)->auth && $connection->socketId && cache()->get('socket_'.$connection->socketId)) {
 
-            if (optional($tenant)->is_user) {
-                $connection->user = $tenant->tenantable;
+            $cached_auth = cache()->get('socket_'.$connection->socketId);
 
-                cache()->forever(
-                    'ws_socket_tenantable_' . $connection->socketId,
-                    $tenant->tenantable
-                );
-            }
-
-            $connection->tenant = $tenant;
-
-            if (optional($connection)->tenant) {
-                if (optional($connection->tenant)->tenantable) {
-                    $connection->tenant->tenantable->logActivity('Connected to websocket', $connection->tenant->tenantable, 'info', 'websocket');
-                } else {
-                    $connection->tenant->logActivity('Connected to websocket', $connection->tenant, 'info', 'websocket');
-                }
-            }
+            $connection->user = @$cached_auth['type']::find($cached_auth['id']);
 
             $channel->saveConnection($connection);
         }
@@ -471,12 +447,8 @@ class Handler implements MessageComponentInterface
 
         // Set auth or logout
         ($connection->user)
-            ? Auth::login($connection->user)
-            : Auth::logout();
-
-        if (Auth::user()) {
-            Auth::user()->update_last_online();
-        }
+            ? auth()->login($connection->user)
+            : auth()->logout();
     }
 
     private function addDataCheckLoop(
@@ -486,14 +458,14 @@ class Handler implements MessageComponentInterface
         $optional = false,
         $iteration = false
     ) {
-        $pid = explode('_', $pid . '')[0];
+        $pid = explode('_', $pid.'')[0];
 
         if ($iteration >= 0 && $iteration !== false) {
-            $pid .= '_' . $iteration;
+            $pid .= '_'.$iteration;
         }
 
         // Set timeout start
-        $pidcache_start = 'dedicated_start_' . $pid;
+        $pidcache_start = 'dedicated_start_'.$pid;
         cache()->put($pidcache_start, microtime(true), 100);
 
         // Periodic check for data
@@ -505,8 +477,8 @@ class Handler implements MessageComponentInterface
             $optional,
             $iteration
         ) {
-            $pidcache_data = 'dedicated_data_' . $pid;
-            $pidcache_done = 'dedicated_data_' . $pid . '_done';
+            $pidcache_data = 'dedicated_data_'.$pid;
+            $pidcache_done = 'dedicated_data_'.$pid.'_done';
 
             if (
                 cache()->has($pidcache_start)
@@ -514,7 +486,7 @@ class Handler implements MessageComponentInterface
             ) {
                 if (! $optional) {
                     $connection->send(json_encode([
-                        'event' => $message['event'] . ':error',
+                        'event' => $message['event'].':error',
                         'data' => [
                             'message' => 'Timeout',
                             'diff' => $diff,

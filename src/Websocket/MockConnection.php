@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BlaxSoftware\LaravelWebSockets\Websocket;
 
 use React\Socket\Connection;
+use Illuminate\Support\Facades\Log;
 
 class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 {
@@ -50,7 +51,7 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 
     public function send($data)
     {
-        \Log::channel('websocket')->info('[MockConnection] Send for pid: ' . getmypid(), [
+        Log::channel('websocket')->info('[MockConnection] Send for pid: ' . getmypid(), [
             'data' => $data,
         ]);
 
