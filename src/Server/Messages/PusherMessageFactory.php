@@ -25,7 +25,7 @@ class PusherMessageFactory
     {
         $payload = json_decode($message->getPayload());
 
-        return Str::startsWith($payload->event, 'pusher:')
+        return Str::startsWith($payload->event, 'pusher.')
             ? new PusherChannelProtocolMessage($payload, $connection, $channelManager)
             : new PusherClientMessage($payload, $connection, $channelManager);
     }
