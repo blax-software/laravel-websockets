@@ -43,8 +43,6 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 
         $this->socketId = optional($original_connection)->socketId;
         $this->user = optional($original_connection)->user;
-        $this->tenant = optional($original_connection)->tenant;
-        $this->tenantable = optional($original_connection)->tenantable;
 
         return $this;
     }

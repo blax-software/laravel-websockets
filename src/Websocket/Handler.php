@@ -98,21 +98,27 @@ class Handler implements MessageComponentInterface
         Log::channel('websocket')->info('Executing event: '.$message['event']);
 
         if (strpos($message['event'], 'pusher') !== false) {
-            try {
-                return Controller::controll_message(
-                    $connection,
-                    $channel,
-                    $message,
-                    $this->channelManager
-                );
-            } catch (Exception $e) {
-                return $connection->send(json_encode([
-                    'event' => $message['event'].':error',
-                    'data' => [
-                        'message' => $e->getMessage(),
-                    ],
-                ]));
-            }
+            // try {
+            //     return Controller::controll_message(
+            //         $connection,
+            //         $channel,
+            //         $message,
+            //         $this->channelManager
+            //     );
+            // } catch (Exception $e) {
+            //     return $connection->send(json_encode([
+            //         'event' => $message['event'].':error',
+            //         'data' => [
+            //             'message' => $e->getMessage(),
+            //         ],
+            //     ]));
+            // }
+            return $connection->send(json_encode([
+                'event' => $message['event'].':success',
+                'data' => [
+                    'message' => 'Success',
+                ],
+            ]));
         }
 
         $pid = pcntl_fork();
