@@ -18,7 +18,7 @@ class PresenceChannelTest extends TestCase
         $connection = $this->newConnection();
 
         $message = new Mocks\Message([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'auth' => 'invalid',
                 'channel' => 'presence-channel',
@@ -45,7 +45,7 @@ class PresenceChannelTest extends TestCase
         $encodedUser = json_encode($user);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'channel' => 'presence-channel',
                 'channel_data' => $encodedUser,
@@ -173,7 +173,7 @@ class PresenceChannelTest extends TestCase
             });
 
         $message = new Mocks\Message([
-            'event' => 'pusher:unsubscribe',
+            'event' => 'pusher.unsubscribe',
             'data' => [
                 'channel' => 'presence-channel',
             ],

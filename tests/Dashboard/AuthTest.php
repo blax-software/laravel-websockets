@@ -32,7 +32,7 @@ class AuthTest extends TestCase
         $this->pusherServer->onOpen($connection);
 
         $message = new SignedMessage([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'channel' => 'private-channel',
             ],
@@ -68,7 +68,7 @@ class AuthTest extends TestCase
         ]);
 
         $message = new SignedMessage([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'channel' => 'presence-channel',
                 'channel_data' => $user,

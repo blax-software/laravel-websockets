@@ -18,7 +18,7 @@ class PrivateChannelTest extends TestCase
         $connection = $this->newConnection();
 
         $message = new Mocks\Message([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'auth' => 'invalid',
                 'channel' => 'private-channel',
@@ -36,7 +36,7 @@ class PrivateChannelTest extends TestCase
         $this->pusherServer->onOpen($connection);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'channel' => 'private-channel',
             ],
@@ -66,7 +66,7 @@ class PrivateChannelTest extends TestCase
             });
 
         $message = new Mocks\Message([
-            'event' => 'pusher:unsubscribe',
+            'event' => 'pusher.unsubscribe',
             'data' => [
                 'channel' => 'private-channel',
             ],

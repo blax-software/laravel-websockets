@@ -36,7 +36,7 @@ class PusherChannelProtocolMessage extends PusherClientMessage
         $this->channelManager
             ->connectionPonged($connection)
             ->then(function () use ($connection) {
-                $connection->send(json_encode(['event' => 'pusher:pong']));
+                $connection->send(json_encode(['event' => 'pusher.pong']));
 
                 ConnectionPonged::dispatch($connection->app->id, $connection->socketId);
             });

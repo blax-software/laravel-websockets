@@ -258,6 +258,10 @@ class Controller
     {
         $event = explode('.', $message['event']);
 
+        if (strpos($event[0], 'pusher.') > -1) {
+            $event = explode('.', $event[0]);
+        }
+
         if (strpos($event[0], 'pusher:') > -1) {
             $event = explode(':', $event[0]);
         }

@@ -21,7 +21,7 @@ class PublicChannelTest extends TestCase
             });
 
         $connection->assertSentEvent(
-            'pusher:connection_established',
+            'pusher.connection_established',
             [
                 'data' => json_encode([
                     'socket_id' => $connection->socketId,
@@ -47,7 +47,7 @@ class PublicChannelTest extends TestCase
             });
 
         $message = new Mocks\Message([
-            'event' => 'pusher:unsubscribe',
+            'event' => 'pusher.unsubscribe',
             'data' => [
                 'channel' => 'public-channel',
             ],

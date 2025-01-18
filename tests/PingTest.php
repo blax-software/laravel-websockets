@@ -8,10 +8,10 @@ class PingTest extends TestCase
     {
         $connection = $this->newActiveConnection(['public-channel']);
 
-        $message = new Mocks\Message(['event' => 'pusher:ping']);
+        $message = new Mocks\Message(['event' => 'pusher.ping']);
 
         $this->pusherServer->onMessage($connection, $message);
 
-        $connection->assertSentEvent('pusher:pong');
+        $connection->assertSentEvent('pusher.pong');
     }
 }

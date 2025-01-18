@@ -427,7 +427,7 @@ abstract class TestCase extends Orchestra
 
         foreach ($channelsToJoin as $channel) {
             $message = new Mocks\Message([
-                'event' => 'pusher:subscribe',
+                'event' => 'pusher.subscribe',
                 'data' => [
                     'channel' => $channel,
                 ],
@@ -462,7 +462,7 @@ abstract class TestCase extends Orchestra
         $encodedUser = json_encode($user);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'channel' => $channel,
                 'channel_data' => $encodedUser,
@@ -489,7 +489,7 @@ abstract class TestCase extends Orchestra
         $this->pusherServer->onOpen($connection);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher:subscribe',
+            'event' => 'pusher.subscribe',
             'data' => [
                 'channel' => $channel,
             ],

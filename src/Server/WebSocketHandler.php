@@ -273,7 +273,7 @@ class WebSocketHandler implements MessageComponentInterface
     protected function establishConnection(ConnectionInterface $connection)
     {
         $connection->send(json_encode([
-            'event' => 'pusher:connection_established',
+            'event' => 'pusher.connection_established',
             'data' => json_encode([
                 'socket_id' => $connection->socketId,
                 'activity_timeout' => 30,
