@@ -114,7 +114,7 @@ class Handler implements MessageComponentInterface
             //     ]));
             // }
             return $connection->send(json_encode([
-                'event' => $message['event'].':success',
+                'event' => $message['event'].':response',
                 'data' => [
                     'message' => 'Success',
                 ],
