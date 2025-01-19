@@ -61,8 +61,10 @@ class Handler implements MessageComponentInterface
         }
     }
 
-    public function onMessage(ConnectionInterface $connection, MessageInterface $message)
-    {
+    public function onMessage(
+        ConnectionInterface $connection,
+        MessageInterface $message
+    ) {
         if (! isset($connection->app)) {
             return;
         }
@@ -356,7 +358,7 @@ class Handler implements MessageComponentInterface
         $socket_id = $connection->socketId;
 
         // if not in $channel_connections add it
-        if (strpos($message['event'], ':subscribe') !== false) {
+        if (strpos($message['event'], '.subscribe') !== false) {
             if (! isset($this->channel_connections[$channel_name])) {
                 $this->channel_connections[$channel_name] = [];
             }
@@ -376,7 +378,7 @@ class Handler implements MessageComponentInterface
             );
         }
 
-        if (strpos($message['event'], ':unsubscribe') !== false) {
+        if (strpos($message['event'], '.unsubscribe') !== false) {
             if (isset($this->channel_connections[$channel_name])) {
                 $this->channel_connections[$channel_name] = array_diff($this->channel_connections[$channel_name], [$socket_id]);
             }
