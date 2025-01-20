@@ -166,6 +166,35 @@ class Controller
         }
     }
 
+    final public function progress(
+        mixed $payload = null,
+        ?string $event = null,
+        ?string $channel = null
+    ) : bool {
+        $p = [
+            'event' => ($event ?? $this->event) . ':progress',
+            'data' => $payload,
+            'channel' => $channel ?? $this->channel->getName(),
+        ];
+
+        // if payload only contains key "data"
+        if (
+            count($p) === 1
+            && isset($payload['data'])
+        ) {
+            $p['data'] = $payload['data'];
+        }
+
+        if (get_class($this->connection) === MockConnection::class) {
+            $connection = clone $this->connection;
+            $connection->send(json_encode($p));
+        } else {
+            $this->connection->send(json_encode($p));
+        }
+
+        return true;
+    }
+
     final public function success(
         mixed $payload = null,
         ?string $event = null,
