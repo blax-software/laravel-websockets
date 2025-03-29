@@ -10,12 +10,11 @@ use Illuminate\Support\Facades\Log;
 class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 {
     public $socketId;
-
     public $user;
-
     public $tenant;
-
     public $tenantable;
+    public $remoteAddress;
+    public $ip;
 
     public function __construct($original_connection)
     {
@@ -43,6 +42,8 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 
         $this->socketId = optional($original_connection)->socketId;
         $this->user = optional($original_connection)->user;
+        $this->remoteAddress = optional($original_connection)->remoteAddress;
+        $this->ip ??= optional($original_connection)->ip;
 
         return $this;
     }
