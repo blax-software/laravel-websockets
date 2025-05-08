@@ -470,10 +470,11 @@ class Handler implements MessageComponentInterface
         ) {
             $pidcache_data = 'dedicated_data_'.$pid;
             $pidcache_done = 'dedicated_data_'.$pid.'_done';
+            $pidcache_complete = 'dedicated_data_'.$pid.'_complete';
 
             if (
                 cache()->has($pidcache_start)
-                && ($diff = microtime(true) - ((int) cache()->get($pidcache_start))) > 20
+                && ($diff = microtime(true) - ((int) cache()->get($pidcache_start))) > 60
             ) {
                 if (! $optional) {
                     $connection->send(json_encode([
@@ -486,6 +487,7 @@ class Handler implements MessageComponentInterface
                 }
 
                 $this->channelManager->loop->cancelTimer($timer);
+                cache()->put($pidcache_complete, true, 360);
             }
 
             if (cache()->has($pidcache_done)) {

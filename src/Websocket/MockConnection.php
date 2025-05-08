@@ -50,6 +50,13 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 
     public function send($data)
     {
+        if(cache()->get('dedicated_data_'.$pid.'_complete')){
+            Log::error('[MockConnection] Send for pid: ' . getmypid() . ' which is already completed and does not check for new data', [
+                'data' => $data,
+            ]);
+            return false;
+        }
+
         Log::channel('websocket')->info('[MockConnection] Send for pid: ' . getmypid(), [
             'data' => $data,
         ]);
@@ -58,19 +65,6 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 
         cache()->put($key, $data, 60);
         cache()->put($key . '_done', true, 60);
-
-        // ==== Alternative way without using cache
-        // if (is_string($data)) {
-        //     $d = json_decode($data, true);
-
-        //     \App\Events\TenantEvent::dispatch(
-        //         optional(optional(tenant())->tenantable)->public_id,
-        //         $d['event'],
-        //         (is_array($d['data']))
-        //             ? $d['data']
-        //             : ['data' => $d['data']]
-        //     );
-        // }
 
         return $this;
     }
