@@ -50,7 +50,7 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 
     public function send($data)
     {
-        if(cache()->get('dedicated_data_'.$pid.'_complete')){
+        if(cache()->get('dedicated_data_'.getmypid().'_complete')){
             Log::error('[MockConnection] Send for pid: ' . getmypid() . ' which is already completed and does not check for new data', [
                 'data' => $data,
             ]);
