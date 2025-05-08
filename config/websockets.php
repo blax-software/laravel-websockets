@@ -170,7 +170,7 @@ return [
         |
         */
 
-        'delete_statistics_older_than_days' => 60,
+        'delete_statistics_older_than_days' => 7,
 
     ],
 

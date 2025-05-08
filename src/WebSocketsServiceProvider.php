@@ -47,6 +47,8 @@ class WebSocketsServiceProvider extends ServiceProvider
             __DIR__.'/Websocket' => app_path('Websocket')
         ]);
 
+        $this->registerDefaultWebsocketChannels();
+
         $this->registerEventLoop();
 
         $this->registerSQLiteDatabase();
@@ -76,6 +78,17 @@ class WebSocketsServiceProvider extends ServiceProvider
     public function register()
     {
         //
+    }
+
+
+    /**
+     * Registers Broadcast::channel('websocket', fn () => true); in channels.php
+     *
+     * @return void
+     */
+    protected function registerDefaultWebsocketChannels()
+    {
+        \Illuminate\Support\Facades\Broadcast::channel('websocket', fn() => true);
     }
 
     protected function registerEventLoop()

@@ -27,7 +27,8 @@ class StartServer extends Command
     protected $signature = 'websockets:serve
         {--host=0.0.0.0}
         {--port=6001}
-        {--disable-statistics : Disable the statistics tracking.}
+        {--cache-driver=file : The cache driver to use for the server. Redis will not work due to concurrency issues.}
+        {--disable-statistics=true : Disable the statistics tracking.}
         {--statistics-interval= : The amount of seconds to tick between statistics saving.}
         {--debug : Forces the loggers to be enabled and thereby overriding the APP_DEBUG setting.}
         {--loop : Programatically inject the loop.}
@@ -73,6 +74,21 @@ class StartServer extends Command
      */
     public function handle()
     {
+        $this->components->info('Handling websocket server with pid ' . getmypid() . '...');
+
+        // For is_fork() helper
+        if (! defined('LARAVEL_PARENT_PID')) {
+            define('LARAVEL_PARENT_PID', getmypid());
+        }
+
+        // For is_websocket() helper
+        if (! defined('LARAVEL_IS_WEBSOCKET')) {
+            define('LARAVEL_IS_WEBSOCKET', true);
+        }
+
+        // Fixes redis concurrency issues
+        config(['cache.default' => $this->option('cache-driver', 'file')]);
+
         $this->laravel->singleton(LoopInterface::class, function () {
             return $this->loop;
         });
@@ -182,7 +198,7 @@ class StartServer extends Command
         // then stopping the loop.
 
         if (! extension_loaded('pcntl')) {
-            return;
+            throw new \RuntimeException('The pcntl extension is required to handle concurrency.');
         }
 
         $this->loop->addSignal(SIGTERM, function () {
@@ -279,7 +295,8 @@ class StartServer extends Command
     protected function buildServer()
     {
         $this->server = new ServerFactory(
-            $this->option('host'), $this->option('port')
+            $this->option('host'),
+            $this->option('port')
         );
 
         if ($loop = $this->option('loop')) {
@@ -301,7 +318,8 @@ class StartServer extends Command
     protected function getLastRestart()
     {
         return Cache::get(
-            'blax:websockets:restart', 0
+            'blax:websockets:restart',
+            0
         );
     }
 

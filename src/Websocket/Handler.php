@@ -19,6 +19,7 @@ use BlaxSoftware\LaravelWebSockets\Server\Exceptions\WebSocketException as Excep
 use BlaxSoftware\LaravelWebSockets\Server\Messages\PusherMessageFactory;
 use BlaxSoftware\LaravelWebSockets\Server\QueryParameters;
 use Exception;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Ratchet\ConnectionInterface;
@@ -160,14 +161,6 @@ class Handler implements MessageComponentInterface
      */
     public function onClose(ConnectionInterface $connection): void
     {
-        if (optional($connection)->tenant) {
-            if (optional($connection->tenant)->tenantable) {
-                $connection->tenant->tenantable->logActivity('Disconnected from websocket', $connection->tenant->tenantable, 'info', 'websocket');
-            } else {
-                $connection->tenant->logActivity('Disconnected from websocket', $connection->tenant, 'info', 'websocket');
-            }
-        }
-
         // remove connection from $channel_connections
         foreach ($this->channel_connections as $channel => $connections) {
             if (in_array($connection->socketId, $connections)) {
@@ -179,16 +172,16 @@ class Handler implements MessageComponentInterface
             }
 
             cache()->forget(
-                'ws_socket_tenantable_'.$connection->socketId,
+                'ws_socket_tenantable_' . $connection->socketId,
             );
 
             if (@$this->channel_connections[$channel]) {
                 cache()->forever(
-                    'ws_channel_connections_'.$channel,
+                    'ws_channel_connections_' . $channel,
                     @$this->channel_connections[$channel]
                 );
             } else {
-                cache()->forget('ws_channel_connections_'.$channel);
+                cache()->forget('ws_channel_connections_' . $channel);
             }
 
             cache()->forever(
@@ -205,7 +198,7 @@ class Handler implements MessageComponentInterface
 
                     ConnectionClosed::dispatch($connection->app->id, $connection->socketId);
 
-                    cache()->forget('ws_connection_'.$connection->socketId);
+                    cache()->forget('ws_connection_' . $connection->socketId);
                 }
             });
     }
@@ -413,22 +406,6 @@ class Handler implements MessageComponentInterface
             request()->offsetUnset($key);
         }
 
-        if (optional($connection)->tenant) {
-            request()->merge([
-                'tenant' => $connection->tenant ?? null,
-                'tenantable' => $connection->tenant->tenantable ?? null,
-                'user' => optional($connection->tenant)->tenantable instanceof \App\Models\User ? $connection->tenant->tenantable : null,
-                'organization' => optional($connection->tenant)->organization,
-                'organization_id' => optional($connection->tenant)->organization_id,
-            ]);
-        } else {
-            request()->offsetUnset('tenant');
-            request()->offsetUnset('tenantable');
-            request()->offsetUnset('user');
-            request()->offsetUnset('organization');
-            request()->offsetUnset('organization_id');
-        }
-
         request()->merge(@$message['data'] ?? []);
     }
 
@@ -455,8 +432,14 @@ class Handler implements MessageComponentInterface
 
         // Set auth or logout
         ($connection->user)
-            ? auth()->login($connection->user)
-            : auth()->logout();
+            ? Auth::login($connection->user)
+            : Auth::logout();
+
+        if (Auth::user()) {
+            /** @var \App\Models\User */
+            $user = Auth::user();
+            $user->refresh();
+        }
     }
 
     private function addDataCheckLoop(
