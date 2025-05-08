@@ -54,7 +54,7 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
             Log::error('[MockConnection] Send for pid: ' . getmypid() . ' which is already completed and does not check for new data', [
                 'data' => $data,
             ]);
-            return false;
+            return $this;
         }
 
         Log::channel('websocket')->info('[MockConnection] Send for pid: ' . getmypid(), [
