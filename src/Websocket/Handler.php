@@ -45,6 +45,15 @@ class Handler implements MessageComponentInterface
             return $connection->close();
         }
 
+        // Set IP to connection
+        $connection->remoteAddress = trim(
+            explode(
+                ',',
+                $connection->httpRequest->getHeaderLine('X-Forwarded-For')
+            )[0] ?? $connection->remoteAddress
+        );
+        Log::channel('websocket')->info('WS onOpen IP: ' . $connection->remoteAddress);
+
         $this->verifyAppKey($connection);
         $this->verifyOrigin($connection);
         $this->limitConcurrentConnections($connection);
