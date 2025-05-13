@@ -52,6 +52,7 @@ class Handler implements MessageComponentInterface
                 $connection->httpRequest->getHeaderLine('X-Forwarded-For')
             )[0] ?? $connection->remoteAddress
         );
+        request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
         Log::channel('websocket')->info('WS onOpen IP: ' . $connection->remoteAddress);
 
         $this->verifyAppKey($connection);
@@ -78,6 +79,8 @@ class Handler implements MessageComponentInterface
         if (! isset($connection->app)) {
             return;
         }
+
+        request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
 
         PusherMessageFactory::createForMessage(
             $message,
