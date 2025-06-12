@@ -41,34 +41,42 @@ class Handler implements MessageComponentInterface
 
     public function onOpen(ConnectionInterface $connection)
     {
-        if (! $this->connectionCanBeMade($connection)) {
-            return $connection->close();
-        }
+        try{
+            if (! $this->connectionCanBeMade($connection)) {
+                return $connection->close();
+            }
 
-        // Set IP to connection
-        $connection->remoteAddress = trim(
-            explode(
-                ',',
-                $connection->httpRequest->getHeaderLine('X-Forwarded-For')
-            )[0] ?? $connection->remoteAddress
-        );
-        request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
-        Log::channel('websocket')->info('WS onOpen IP: ' . $connection->remoteAddress);
-
-        $this->verifyAppKey($connection);
-        $this->verifyOrigin($connection);
-        $this->limitConcurrentConnections($connection);
-        $this->generateSocketId($connection);
-        $this->establishConnection($connection);
-
-        if (isset($connection->app)) {
-            $this->channelManager->subscribeToApp($connection->app->id);
-            $this->channelManager->connectionPonged($connection);
-
-            NewConnection::dispatch(
-                $connection->app->id,
-                $connection->socketId
+            // Set IP to connection
+            $connection->remoteAddress = trim(
+                explode(
+                    ',',
+                    $connection->httpRequest->getHeaderLine('X-Forwarded-For')
+                )[0] ?? $connection->remoteAddress
             );
+            request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
+            Log::channel('websocket')->info('WS onOpen IP: ' . $connection->remoteAddress);
+
+            $this->verifyAppKey($connection);
+            $this->verifyOrigin($connection);
+            $this->limitConcurrentConnections($connection);
+            $this->generateSocketId($connection);
+            $this->establishConnection($connection);
+
+            if (isset($connection->app)) {
+                $this->channelManager->subscribeToApp($connection->app->id);
+                $this->channelManager->connectionPonged($connection);
+
+                NewConnection::dispatch(
+                    $connection->app->id,
+                    $connection->socketId
+                );
+            }
+        }catch (UnknownAppKey $e) {
+            Log::channel('websocket')->error('Root level error: '. $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
     }
 
