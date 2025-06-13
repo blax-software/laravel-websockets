@@ -84,95 +84,88 @@ class Handler implements MessageComponentInterface
         ConnectionInterface $connection,
         MessageInterface $message
     ) {
-        if (! isset($connection->app)) {
-            return;
-        }
+        try {
+            if (! isset($connection->app)) {
+                return;
+            }
 
-        request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
+            request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
 
-        PusherMessageFactory::createForMessage(
-            $message,
-            $connection,
-            $this->channelManager
-        )->respond();
+            PusherMessageFactory::createForMessage(
+                $message,
+                $connection,
+                $this->channelManager
+            )->respond();
 
-        // Payload json to array
-        $message = json_decode($message->getPayload(), true);
+            // Payload json to array
+            $message = json_decode($message->getPayload(), true);
 
-        // Cut short for ping pong
-        if (strpos($message['event'], ':ping') !== false) {
-            return gc_collect_cycles();
-        }
+            // Cut short for ping pong
+            if (strpos($message['event'], ':ping') !== false) {
+                return gc_collect_cycles();
+            }
 
-        $this->handleChannelSubscriptions($message, $connection);
+            $this->handleChannelSubscriptions($message, $connection);
 
-        if (! $channel = $this->get_connection_channel($connection, $message)) {
-            return $connection->send(json_encode([
-                'event' => $message['event'].':error',
-                'data' => [
-                    'message' => 'Channel not found',
-                    'meta' => $message,
-                ],
-            ]));
-        }
-
-        $this->authenticateConnection($connection, $channel, $message);
-
-        Log::channel('websocket')->info('Executing event: '.$message['event']);
-
-        if (strpos($message['event'], 'pusher') !== false) {
-            // try {
-            //     return Controller::controll_message(
-            //         $connection,
-            //         $channel,
-            //         $message,
-            //         $this->channelManager
-            //     );
-            // } catch (Exception $e) {
-            //     return $connection->send(json_encode([
-            //         'event' => $message['event'].':error',
-            //         'data' => [
-            //             'message' => $e->getMessage(),
-            //         ],
-            //     ]));
-            // }
-            return $connection->send(json_encode([
-                'event' => $message['event'].':response',
-                'data' => [
-                    'message' => 'Success',
-                ],
-            ]));
-        }
-
-        $pid = pcntl_fork();
-
-        if ($pid == -1) {
-            Log::error('Fork error');
-        } elseif ($pid == 0) {
-            try {
-                DB::reconnect();
-
-                $this->setRequest($message, $connection);
-                $mock = new MockConnection($connection);
-
-                Controller::controll_message(
-                    $mock,
-                    $channel,
-                    $message,
-                    $this->channelManager
-                );
-            } catch (Exception $e) {
-                $mock->send(json_encode([
+            if (! $channel = $this->get_connection_channel($connection, $message)) {
+                return $connection->send(json_encode([
                     'event' => $message['event'].':error',
                     'data' => [
-                        'message' => $e->getMessage(),
+                        'message' => 'Channel not found',
+                        'meta' => $message,
                     ],
                 ]));
             }
 
-            exit(0);
-        } else {
-            $this->addDataCheckLoop($connection, $message, $pid);
+            $this->authenticateConnection($connection, $channel, $message);
+
+            Log::channel('websocket')->info('Executing event: '.$message['event']);
+
+            if (strpos($message['event'], 'pusher') !== false) {
+                return $connection->send(json_encode([
+                    'event' => $message['event'].':response',
+                    'data' => [
+                        'message' => 'Success',
+                    ],
+                ]));
+            }
+
+            $pid = pcntl_fork();
+
+            if ($pid == -1) {
+                Log::error('Fork error');
+            } elseif ($pid == 0) {
+                try {
+                    DB::reconnect();
+
+                    $this->setRequest($message, $connection);
+                    $mock = new MockConnection($connection);
+
+                    Controller::controll_message(
+                        $mock,
+                        $channel,
+                        $message,
+                        $this->channelManager
+                    );
+                } catch (Exception $e) {
+                    $mock->send(json_encode([
+                        'event' => $message['event'].':error',
+                        'data' => [
+                            'message' => $e->getMessage(),
+                        ],
+                    ]));
+                }
+
+                exit(0);
+            } else {
+                $this->addDataCheckLoop($connection, $message, $pid);
+            }
+        } catch (\Exception $e) {
+            Log::channel('websocket')->error('onMessage unhandled error: '. $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
         }
     }
 

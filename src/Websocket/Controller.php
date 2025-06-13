@@ -255,8 +255,7 @@ class Controller
             ? $trace[0]['line']
             : null;
 
-        // log
-        Log::channel('websocket')->error('Send error: ' . $p['data']['message'], $p);
+        Log::channel('websocket')->error('Send error: ' . @$p['data']['message'], $p);
 
         if (get_class($this->connection) === MockConnection::class) {
             $connection = clone $this->connection;
