@@ -87,7 +87,7 @@ class Controller
 
             $payload = $controller->$method(
                 $connection,
-                $message['data'],
+                @$message['data'] ?? [],
                 $message['channel']
             );
 
