@@ -147,6 +147,11 @@ class Handler implements MessageComponentInterface
                         $message,
                         $this->channelManager
                     );
+
+                    // Run deferred callbacks
+                    \Illuminate\Container\Container::getInstance()
+                        ->make(\Illuminate\Support\Defer\DeferredCallbackCollection::class)
+                        ->invokeWhen(fn($callback) => true);
                 } catch (Exception $e) {
                     $mock->send(json_encode([
                         'event' => $message['event'].':error',
