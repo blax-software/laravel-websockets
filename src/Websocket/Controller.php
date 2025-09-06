@@ -117,7 +117,7 @@ class Controller
             return $connection->send(json_encode([
                 'event' => $message['event'] . ':error',
                 'data' => [
-                    'message' => 'Error: ' . $e->getMessage(),
+                    'message' => $e->getMessage(),
                     'meta' => [
                         'reported' => true,
                     ],
