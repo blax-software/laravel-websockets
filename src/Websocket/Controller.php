@@ -105,7 +105,7 @@ class Controller
             ]));
 
             return $payload;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $reload = [
                 'event' => @$message['event'],
                 'data' => @$message['data'],

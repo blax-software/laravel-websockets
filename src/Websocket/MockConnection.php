@@ -36,7 +36,7 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
             try {
                 $property->setAccessible(true);
                 $this->{$property->getName()} = $property->getValue($original_connection);
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
             }
         }
 

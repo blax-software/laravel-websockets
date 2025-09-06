@@ -165,7 +165,7 @@ class Handler implements MessageComponentInterface
             } else {
                 $this->addDataCheckLoop($connection, $message, $pid);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::channel('websocket')->error('onMessage unhandled error: '. $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
