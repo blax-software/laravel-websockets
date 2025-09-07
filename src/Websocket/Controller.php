@@ -111,6 +111,7 @@ class Controller
                 'data' => @$message['data'],
                 'channel' => @$message['channel'],
                 'line' => $e->getFile() . ':' . $e->getLine(),
+                'stack' => $e->getTraceAsString(),
             ];
             Log::error($e->getMessage(), $reload);
 
