@@ -14,13 +14,14 @@ class WebsocketMessageEvent implements ShouldBroadcastNow
 
     public function __construct(
         public string $event,
-        public $data
+        public $data,
+        public ?string $session,
     ) {}
 
     public function broadcastOn()
     {
         return [
-            new PrivateChannel('websocket'),
+            new PrivateChannel('websocket'.($this->session ? ".{$this->session}" : '')),
         ];
     }
 
