@@ -15,7 +15,7 @@ class WebsocketMessageEvent implements ShouldBroadcastNow
     public function __construct(
         public string $event,
         public $data,
-        public ?string $session,
+        public ?string $session = null,
     ) {}
 
     public function broadcastOn()
