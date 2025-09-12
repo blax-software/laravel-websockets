@@ -89,6 +89,7 @@ class WebSocketsServiceProvider extends ServiceProvider
     protected function registerDefaultWebsocketChannels()
     {
         \Illuminate\Support\Facades\Broadcast::channel('websocket', fn() => true);
+        \Illuminate\Support\Facades\Broadcast::channel('websocket.{session}', fn() => true);
     }
 
     protected function registerEventLoop()
