@@ -562,7 +562,7 @@ class Handler implements MessageComponentInterface
                 $channel_conection->send(json_encode([
                     'event' => ($event ?? $event),
                     'data' => $payload,
-                    'channel' => $channel ?? $channel->getName(),
+                    'channel' => $channel->getName(),
                 ]));
             }
 
@@ -570,7 +570,7 @@ class Handler implements MessageComponentInterface
                 $connection->send(json_encode([
                     'event' => ($event ?? $event),
                     'data' => $payload,
-                    'channel' => $channel ?? $channel->getName(),
+                    'channel' => $channel->getName(),
                 ]));
             }
         }

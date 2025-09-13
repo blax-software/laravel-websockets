@@ -136,37 +136,6 @@ class Controller
         ]));
     }
 
-    final public function broadcast(
-        mixed $payload,
-        ?string $event = null,
-        ?string $channel = null,
-        bool $including_self = false
-    ) : void {
-        if (! $this->channel) {
-            $this->error('Channel not found');
-
-            return;
-        }
-
-        foreach ($this->channel->getConnections() as $channel_conection) {
-            if ($channel_conection !== $this->connection) {
-                $channel_conection->send(json_encode([
-                    'event' => ($event ?? $this->event),
-                    'data' => $payload,
-                    'channel' => $channel ?? $this->channel->getName(),
-                ]));
-            }
-
-            if ($including_self) {
-                $this->connection->send(json_encode([
-                    'event' => ($event ?? $this->event),
-                    'data' => $payload,
-                    'channel' => $channel ?? $this->channel->getName(),
-                ]));
-            }
-        }
-    }
-
     final public function progress(
         mixed $payload = null,
         ?string $event = null,
@@ -268,7 +237,7 @@ class Controller
         return true;
     }
 
-    final public function broadcasting(
+    final public function broadcast(
         array|string|null $payload = null,
         ?string $event = null,
         ?string $channel = null,
@@ -280,22 +249,38 @@ class Controller
             ];
         }
 
+        $channel ??= ($this->channel ? $this->channel->getName() : null);
+
         $p = [
             'event' => ($event ?? $this->event),
             'data' => $payload,
-            'channel' => $channel ?? ($this->channel ? $this->channel->getName() : null),
+            'channel' => $channel,
         ];
 
         if (get_class($this->connection) !== MockConnection::class) {
-            throw new \Exception('This method is only available in async mode');
+            if (! $channel) {
+                $this->error('Channel not found');
+                return;
+            }
+
+            foreach ($this->channel->getConnections() as $channel_conection) {
+                if ($channel_conection !== $this->connection) {
+                    $channel_conection->send(json_encode($p));
+                }
+
+                if ($including_self) {
+                    $this->connection->send(json_encode($p));
+                }
+            }
+        }else{
+            $connection = clone $this->connection;
+            $connection->broadcast(
+                $p,
+                $channel,
+                $including_self
+            );
         }
 
-        $connection = clone $this->connection;
-        $connection->broadcast(
-            $p,
-            $channel,
-            $including_self
-        );
     }
 
     protected static function get_uniquifyer($event)
