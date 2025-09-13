@@ -69,6 +69,19 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
         return $this;
     }
 
+    public function broadcast(
+        $data,
+        ?string $channel = null,
+        bool $including_self = false,
+    ){
+        $data ??= [];
+        $data['broadcast'] = true;
+        $data['channel'] ??= $channel;
+        $data['including_self'] = $including_self;
+
+        return $this->send(json_encode($data));
+    }
+
     private static function getDataKey()
     {
         $key = 'dedicated_data_' . getmypid();

@@ -268,6 +268,36 @@ class Controller
         return true;
     }
 
+    final public function broadcasting(
+        array|string|null $payload = null,
+        ?string $event = null,
+        ?string $channel = null,
+        bool $including_self = false
+    ){
+        if (is_string($payload)) {
+            $payload = [
+                'message' => $payload,
+            ];
+        }
+
+        $p = [
+            'event' => ($event ?? $this->event),
+            'data' => $payload,
+            'channel' => $channel ?? ($this->channel ? $this->channel->getName() : null),
+        ];
+
+        if (get_class($this->connection) !== MockConnection::class) {
+            throw new \Exception('This method is only available in async mode');
+        }
+
+        $connection = clone $this->connection;
+        $connection->broadcast(
+            $p,
+            $channel,
+            $including_self
+        );
+    }
+
     protected static function get_uniquifyer($event)
     {
         preg_match('/[\[].*[\]]/', $event, $matches);

@@ -498,7 +498,7 @@ class Handler implements MessageComponentInterface
                     $connection->send(json_encode([
                         'event' => $message['event'].':error',
                         'data' => [
-                            'message' => 'Timeout',
+                            'message' => $message['event'] . ' timeout',
                             'diff' => $diff,
                         ],
                     ]));
@@ -519,8 +519,23 @@ class Handler implements MessageComponentInterface
                 // Retrieve cached data
                 $sending = @cache()->get($pidcache_data);
 
+
                 // Send the data to client
-                $connection->send($sending);
+                if(@$message['broadcast']){
+
+                    $bm = json_decode($sending, true);
+
+                    $this->broadcast(
+                        $connection->app->id,
+                        $bm['data'] ?? null,
+                        $bm['event'] ?? null,
+                        $bm['channel'] ?? null,
+                        $bm['including_self'],
+                        $connection
+                    );
+                } else{
+                    $connection->send($sending);
+                }
 
                 // Stop periodic check
                 $this->channelManager->loop->cancelTimer($timer);
@@ -530,4 +545,35 @@ class Handler implements MessageComponentInterface
             pcntl_waitpid(-1, $status, WNOHANG);
         });
     }
+
+    public function broadcast(
+        string $appId,
+        mixed $payload,
+        ?string $event = null,
+        ?string $channel = null,
+        bool $including_self = false,
+        $connection = null
+    ) : void {
+
+        $channel = $this->channelManager->findOrCreate($appId,$channel);
+
+        foreach ($channel->getConnections() as $channel_conection) {
+            if ($channel_conection !== $connection) {
+                $channel_conection->send(json_encode([
+                    'event' => ($event ?? $event),
+                    'data' => $payload,
+                    'channel' => $channel ?? $channel->getName(),
+                ]));
+            }
+
+            if ($including_self) {
+                $connection->send(json_encode([
+                    'event' => ($event ?? $event),
+                    'data' => $payload,
+                    'channel' => $channel ?? $channel->getName(),
+                ]));
+            }
+        }
+    }
+
 }
