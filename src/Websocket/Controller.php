@@ -23,7 +23,7 @@ class Controller
 
     public static function controll_message(
         ConnectionInterface $connection,
-        PrivateChannel $channel,
+        PrivateChannel|Channel|PresenceChannel $channel,
         array $message,
         LocalChannelManager|RedisChannelManager $channelManager
     ) {

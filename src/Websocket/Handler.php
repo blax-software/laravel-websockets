@@ -41,7 +41,7 @@ class Handler implements MessageComponentInterface
 
     public function onOpen(ConnectionInterface $connection)
     {
-        try{
+        try {
             if (! $this->connectionCanBeMade($connection)) {
                 return $connection->close();
             }
@@ -71,8 +71,8 @@ class Handler implements MessageComponentInterface
                     $connection->socketId
                 );
             }
-        }catch (UnknownAppKey $e) {
-            Log::channel('websocket')->error('Root level error: '. $e->getMessage(), [
+        } catch (UnknownAppKey $e) {
+            Log::channel('websocket')->error('Root level error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
@@ -102,6 +102,7 @@ class Handler implements MessageComponentInterface
 
             // Cut short for ping pong
             if (strpos($message['event'], ':ping') !== false) {
+                $this->channelManager->connectionPonged($connection);
                 return gc_collect_cycles();
             }
 
@@ -109,7 +110,7 @@ class Handler implements MessageComponentInterface
 
             if (! $channel = $this->get_connection_channel($connection, $message)) {
                 return $connection->send(json_encode([
-                    'event' => $message['event'].':error',
+                    'event' => $message['event'] . ':error',
                     'data' => [
                         'message' => 'Channel not found',
                         'meta' => $message,
@@ -119,11 +120,11 @@ class Handler implements MessageComponentInterface
 
             $this->authenticateConnection($connection, $channel, $message);
 
-            Log::channel('websocket')->info('Executing event: '.$message['event']);
+            Log::channel('websocket')->info('Executing event: ' . $message['event']);
 
             if (strpos($message['event'], 'pusher') !== false) {
                 return $connection->send(json_encode([
-                    'event' => $message['event'].':response',
+                    'event' => $message['event'] . ':response',
                     'data' => [
                         'message' => 'Success',
                     ],
@@ -154,7 +155,7 @@ class Handler implements MessageComponentInterface
                         ->invokeWhen(fn($callback) => true);
                 } catch (Exception $e) {
                     $mock->send(json_encode([
-                        'event' => $message['event'].':error',
+                        'event' => $message['event'] . ':error',
                         'data' => [
                             'message' => $e->getMessage(),
                         ],
@@ -166,7 +167,7 @@ class Handler implements MessageComponentInterface
                 $this->addDataCheckLoop($connection, $message, $pid);
             }
         } catch (\Throwable $e) {
-            Log::channel('websocket')->error('onMessage unhandled error: '. $e->getMessage(), [
+            Log::channel('websocket')->error('onMessage unhandled error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
@@ -344,7 +345,7 @@ class Handler implements MessageComponentInterface
         return $this;
     }
 
-    protected function get_connection_channel(&$connection, &$message): ?PrivateChannel
+    protected function get_connection_channel(&$connection, &$message): ?Channel
     {
         // Put channel on its place
         if (! @$message['channel'] && $message['data'] && $message['data']['channel']) {
@@ -379,7 +380,7 @@ class Handler implements MessageComponentInterface
             }
 
             cache()->forever(
-                'ws_channel_connections_'.$channel_name,
+                'ws_channel_connections_' . $channel_name,
                 $this->channel_connections[$channel_name]
             );
 
@@ -400,11 +401,11 @@ class Handler implements MessageComponentInterface
 
             if (@$this->channel_connections[$channel_name]) {
                 cache()->forever(
-                    'ws_channel_connections_'.$channel_name,
+                    'ws_channel_connections_' . $channel_name,
                     $this->channel_connections[$channel_name]
                 );
             } else {
-                cache()->forget('ws_channel_connections_'.$channel_name);
+                cache()->forget('ws_channel_connections_' . $channel_name);
             }
 
             cache()->forever(
@@ -433,9 +434,9 @@ class Handler implements MessageComponentInterface
         $message
     ) {
 
-        if (! optional($connection)->auth && $connection->socketId && cache()->get('socket_'.$connection->socketId)) {
+        if (! optional($connection)->auth && $connection->socketId && cache()->get('socket_' . $connection->socketId)) {
 
-            $cached_auth = cache()->get('socket_'.$connection->socketId);
+            $cached_auth = cache()->get('socket_' . $connection->socketId);
 
             $connection->user = @$cached_auth['type']::find($cached_auth['id']);
 
@@ -467,14 +468,14 @@ class Handler implements MessageComponentInterface
         $optional = false,
         $iteration = false
     ) {
-        $pid = explode('_', $pid.'')[0];
+        $pid = explode('_', $pid . '')[0];
 
         if ($iteration >= 0 && $iteration !== false) {
-            $pid .= '_'.$iteration;
+            $pid .= '_' . $iteration;
         }
 
         // Set timeout start
-        $pidcache_start = 'dedicated_start_'.$pid;
+        $pidcache_start = 'dedicated_start_' . $pid;
         cache()->put($pidcache_start, microtime(true), 100);
 
         // Periodic check for data
@@ -486,9 +487,9 @@ class Handler implements MessageComponentInterface
             $optional,
             $iteration
         ) {
-            $pidcache_data = 'dedicated_data_'.$pid;
-            $pidcache_done = 'dedicated_data_'.$pid.'_done';
-            $pidcache_complete = 'dedicated_data_'.$pid.'_complete';
+            $pidcache_data = 'dedicated_data_' . $pid;
+            $pidcache_done = 'dedicated_data_' . $pid . '_done';
+            $pidcache_complete = 'dedicated_data_' . $pid . '_complete';
 
             if (
                 cache()->has($pidcache_start)
@@ -496,7 +497,7 @@ class Handler implements MessageComponentInterface
             ) {
                 if (! $optional) {
                     $connection->send(json_encode([
-                        'event' => $message['event'].':error',
+                        'event' => $message['event'] . ':error',
                         'data' => [
                             'message' => $message['event'] . ' timeout',
                             'diff' => $diff,
@@ -518,13 +519,11 @@ class Handler implements MessageComponentInterface
 
                 // Retrieve cached data
                 $sending = @cache()->get($pidcache_data);
+                $bm = json_decode($sending, true);
 
 
                 // Send the data to client
-                if(@$message['broadcast']){
-
-                    $bm = json_decode($sending, true);
-
+                if (@$bm['broadcast']) {
                     $this->broadcast(
                         $connection->app->id,
                         $bm['data'] ?? null,
@@ -533,7 +532,7 @@ class Handler implements MessageComponentInterface
                         $bm['including_self'],
                         $connection
                     );
-                } else{
+                } else {
                     $connection->send($sending);
                 }
 
@@ -553,27 +552,24 @@ class Handler implements MessageComponentInterface
         ?string $channel = null,
         bool $including_self = false,
         $connection = null
-    ) : void {
+    ): void {
 
-        $channel = $this->channelManager->findOrCreate($appId,$channel);
+        $channel = $this->channelManager->findOrCreate($appId, $channel);
+
+        $p = [
+            'event' => ($event ?? $event),
+            'data' => $payload,
+            'channel' => $channel->getName(),
+        ];
 
         foreach ($channel->getConnections() as $channel_conection) {
             if ($channel_conection !== $connection) {
-                $channel_conection->send(json_encode([
-                    'event' => ($event ?? $event),
-                    'data' => $payload,
-                    'channel' => $channel->getName(),
-                ]));
+                $channel_conection->send(json_encode($p));
             }
 
             if ($including_self) {
-                $connection->send(json_encode([
-                    'event' => ($event ?? $event),
-                    'data' => $payload,
-                    'channel' => $channel->getName(),
-                ]));
+                $connection->send(json_encode($p));
             }
         }
     }
-
 }

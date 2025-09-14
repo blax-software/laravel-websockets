@@ -19,4 +19,28 @@ class WebsocketService
         //         : ['data' => $d['data']]
         // );
     }
+
+    function getTenantable(string $socketId)
+    {
+        config(['cache.default' => 'file']);
+        return cache()->get('ws_socket_tenantable_' . $socketId);
+    }
+
+    public static function getChannelConnections(string $channelName)
+    {
+        config(['cache.default' => 'file']);
+        return cache()->get('ws_channel_connections_' . $channelName);
+    }
+
+    public static function getActiveChannels()
+    {
+        config(['cache.default' => 'file']);
+        return cache()->get('ws_active_channels');
+    }
+
+    public static function getConnection(string $socketId)
+    {
+        config(['cache.default' => 'file']);
+        return cache()->get('ws_connection_' . $socketId);
+    }
 }
