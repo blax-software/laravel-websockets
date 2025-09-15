@@ -37,7 +37,7 @@ class WebsocketService
     public static function getAuth(string $socketId)
     {
         config(['cache.default' => 'file']);
-        return cache()->get('ws_socket_auth_' . $socketId);
+        return cache()->get('ws_socket_auth_' . str()->slug($socketId));
     }
 
     public static function getChannelConnections(string $channelName)
@@ -55,7 +55,7 @@ class WebsocketService
     public static function getConnection(string $socketId)
     {
         config(['cache.default' => 'file']);
-        return cache()->get('ws_connection_' . $socketId);
+        return cache()->get('ws_connection_' . str()->slug($socketId));
     }
 
     public static function getAuthedUsers()
@@ -66,25 +66,39 @@ class WebsocketService
 
     public static function isUserConnected($userId)
     {
-        config(['cache.default' => 'file']);
-        $authed_users = cache()->get('ws_socket_authed_users') ?? [];
-        $user_ids = array_values($authed_users);
-
-        return in_array($userId, $user_ids);
+        return in_array($userId, array_values(static::getAuthedUsers()));
     }
 
     public static function getUserSocketIds($userId)
     {
-        config(['cache.default' => 'file']);
-        $authed_users = cache()->get('ws_socket_authed_users') ?? [];
         $socket_ids = [];
 
-        foreach ($authed_users as $socket_id => $u_id) {
+        foreach (static::getAuthedUsers() as $socket_id => $u_id) {
             if ($u_id == $userId) {
                 $socket_ids[] = $socket_id;
             }
         }
 
         return $socket_ids;
+    }
+
+    public static function setUserAuthed($socketId, $user)
+    {
+        $authed_users = static::getAuthedUsers();
+        $authed_users[$socketId] = $user->id;
+        cache()->forever('ws_socket_authed_users', $authed_users);
+        cache()->forever('ws_socket_auth_' . str()->slug($socketId), $user);
+
+        return static::getAuthedUsers();
+    }
+
+    public static function clearUserAuthed($socketId)
+    {
+        $authed_users = static::getAuthedUsers();
+        unset($authed_users[$socketId]);
+        cache()->forever('ws_socket_authed_users', $authed_users);
+        cache()->forget('ws_socket_auth_' . str()->slug($socketId));
+
+        return static::getAuthedUsers();
     }
 }
