@@ -101,7 +101,10 @@ class Handler implements MessageComponentInterface
             $message = json_decode($message->getPayload(), true);
 
             // Cut short for ping pong
-            if (strpos($message['event'], ':ping') !== false) {
+            if (
+                (strtolower($message['event']) === 'pusher:ping')
+                || (strtolower($message['event']) === 'pusher.ping')
+            ) {
                 $this->channelManager->connectionPonged($connection);
                 return gc_collect_cycles();
             }
