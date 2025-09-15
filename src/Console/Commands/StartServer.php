@@ -108,7 +108,7 @@ class StartServer extends Command
 
         $this->configurePcntlSignal();
 
-        $this->configurePongTracker();
+        // $this->configurePongTracker();
 
         $this->startServer();
     }
