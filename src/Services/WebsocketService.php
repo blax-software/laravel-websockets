@@ -45,6 +45,7 @@ class WebsocketService
 
     public static function resetAllTracking()
     {
+        $previousCache = config('cache.default');
         config(['cache.default' => 'file']);
         cache()->forget('ws_active_channels');
         cache()->forget('ws_socket_auth');
@@ -52,6 +53,7 @@ class WebsocketService
         cache()->forget('ws_socket_authed_users');
         cache()->forget('ws_channel_connections');
         cache()->forget('ws_connection');
+        config(['cache.default' => $previousCache]);
 
         return true;
     }
@@ -59,32 +61,47 @@ class WebsocketService
 
     public static function getAuth(string $socketId)
     {
+        $previousCache = config('cache.default');
         config(['cache.default' => 'file']);
-        return cache()->get('ws_socket_auth_' . str()->slug($socketId));
+        $r = cache()->get('ws_socket_auth_' . str()->slug($socketId));
+        config(['cache.default' => $previousCache]);
+        return $r;
     }
 
     public static function getChannelConnections(string $channelName)
     {
+        $previousCache = config('cache.default');
         config(['cache.default' => 'file']);
-        return cache()->get('ws_channel_connections_' . $channelName);
+        $r = cache()->get('ws_channel_connections_' . $channelName);
+        config(['cache.default' => $previousCache]);
+        return $r;
     }
 
     public static function getActiveChannels()
     {
+        $previousCache = config('cache.default');
         config(['cache.default' => 'file']);
-        return cache()->get('ws_active_channels');
+        $r = cache()->get('ws_active_channels');
+        config(['cache.default' => $previousCache]);
+        return $r;
     }
 
     public static function getConnection(string $socketId)
     {
+        $previousCache = config('cache.default');
         config(['cache.default' => 'file']);
-        return cache()->get('ws_connection_' . str()->slug($socketId));
+        $r = cache()->get('ws_connection_' . str()->slug($socketId));
+        config(['cache.default' => $previousCache]);
+        return $r;
     }
 
     public static function getAuthedUsers()
     {
+        $previousCache = config('cache.default');
         config(['cache.default' => 'file']);
-        return cache()->get('ws_socket_authed_users') ?? [];
+        $r = cache()->get('ws_socket_authed_users') ?? [];
+        config(['cache.default' => $previousCache]);
+        return $r;
     }
 
     public static function isUserConnected($userId)
@@ -109,8 +126,12 @@ class WebsocketService
     {
         $authed_users = static::getAuthedUsers();
         $authed_users[$socketId] = $user->id;
+
+        $previousCache = config('cache.default');
+        config(['cache.default' => 'file']);
         cache()->forever('ws_socket_authed_users', $authed_users);
         cache()->forever('ws_socket_auth_' . str()->slug($socketId), $user);
+        config(['cache.default' => $previousCache]);
 
         return static::getAuthedUsers();
     }
@@ -119,8 +140,12 @@ class WebsocketService
     {
         $authed_users = static::getAuthedUsers();
         unset($authed_users[$socketId]);
+
+        $previousCache = config('cache.default');
+        config(['cache.default' => 'file']);
         cache()->forever('ws_socket_authed_users', $authed_users);
         cache()->forget('ws_socket_auth_' . str()->slug($socketId));
+        config(['cache.default' => $previousCache]);
 
         return static::getAuthedUsers();
     }
