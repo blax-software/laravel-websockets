@@ -257,8 +257,8 @@ class Channel
 
         if (! hash_equals(
             hash_hmac('sha256', $signature, $connection->app->secret),
-            Str::after($payload->auth, ':'))
-        ) {
+            Str::after(optional($payload)->auth ?? ':', ':')
+        )) {
             throw new InvalidSignature;
         }
     }

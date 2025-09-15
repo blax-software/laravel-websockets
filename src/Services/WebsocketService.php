@@ -20,10 +20,10 @@ class WebsocketService
         // );
     }
 
-    function getTenantable(string $socketId)
+    function getAuth(string $socketId)
     {
         config(['cache.default' => 'file']);
-        return cache()->get('ws_socket_tenantable_' . $socketId);
+        return cache()->get('ws_socket_auth_' . $socketId);
     }
 
     public static function getChannelConnections(string $channelName)
@@ -42,5 +42,35 @@ class WebsocketService
     {
         config(['cache.default' => 'file']);
         return cache()->get('ws_connection_' . $socketId);
+    }
+
+    public static function getAuthedUsers()
+    {
+        config(['cache.default' => 'file']);
+        return cache()->get('ws_socket_authed_users') ?? [];
+    }
+
+    public static function isUserConnected($userId)
+    {
+        config(['cache.default' => 'file']);
+        $authed_users = cache()->get('ws_socket_authed_users') ?? [];
+        $user_ids = array_values($authed_users);
+
+        return in_array($userId, $user_ids);
+    }
+
+    public static function getUserSocketIds($userId)
+    {
+        config(['cache.default' => 'file']);
+        $authed_users = cache()->get('ws_socket_authed_users') ?? [];
+        $socket_ids = [];
+
+        foreach ($authed_users as $socket_id => $u_id) {
+            if ($u_id == $userId) {
+                $socket_ids[] = $socket_id;
+            }
+        }
+
+        return $socket_ids;
     }
 }

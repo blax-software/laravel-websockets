@@ -191,7 +191,7 @@ class Handler implements MessageComponentInterface
             }
 
             cache()->forget(
-                'ws_socket_tenantable_' . $connection->socketId,
+                'ws_socket_auth_' . $connection->socketId,
             );
 
             if (@$this->channel_connections[$channel]) {
@@ -207,6 +207,10 @@ class Handler implements MessageComponentInterface
                 'ws_active_channels',
                 array_keys($this->channel_connections)
             );
+
+            $authed_users = cache()->get('ws_socket_authed_users') ?? [];
+            unset($authed_users[$connection->socketId]);
+            cache()->forever('ws_socket_authed_users', $authed_users);
         }
 
         $this->channelManager
@@ -458,6 +462,16 @@ class Handler implements MessageComponentInterface
             /** @var \App\Models\User */
             $user = Auth::user();
             $user->refresh();
+
+            cache()->forever(
+                'ws_socket_auth_' . $connection->socketId,
+                $user,
+            );
+
+
+            $authed_users = cache()->get('ws_socket_authed_users') ?? [];
+            $authed_users[$connection->socketId] = $user->id;
+            cache()->forever('ws_socket_authed_users', $authed_users);
         }
     }
 
