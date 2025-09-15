@@ -20,7 +20,19 @@ class WebsocketService
         // );
     }
 
-    function getAuth(string $socketId)
+    public static function resetAllTracking()
+    {
+        config(['cache.default' => 'file']);
+        cache()->forget('ws_active_channels');
+        cache()->forget('ws_socket_auth');
+        cache()->forget('ws_socket_auth_users');
+        cache()->forget('ws_channel_connections');
+        cache()->forget('ws_connection');
+
+        return true;
+    }
+
+    public static function getAuth(string $socketId)
     {
         config(['cache.default' => 'file']);
         return cache()->get('ws_socket_auth_' . $socketId);

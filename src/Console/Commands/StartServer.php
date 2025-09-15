@@ -9,6 +9,7 @@ use BlaxSoftware\LaravelWebSockets\Server\Loggers\ConnectionLogger;
 use BlaxSoftware\LaravelWebSockets\Server\Loggers\HttpLogger;
 use BlaxSoftware\LaravelWebSockets\Server\Loggers\WebSocketsLogger;
 use BlaxSoftware\LaravelWebSockets\ServerFactory;
+use BlaxSoftware\LaravelWebSockets\Services\WebsocketService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use React\EventLoop\Factory as LoopFactory;
@@ -88,6 +89,8 @@ class StartServer extends Command
 
         // Fixes redis concurrency issues
         config(['cache.default' => $this->option('cache-driver', 'file')]);
+
+        WebsocketService::resetAllTracking();
 
         $this->laravel->singleton(LoopInterface::class, function () {
             return $this->loop;
