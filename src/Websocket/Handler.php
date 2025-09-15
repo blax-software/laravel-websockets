@@ -112,7 +112,7 @@ class Handler implements MessageComponentInterface
                 return $connection->send(json_encode([
                     'event' => $message['event'] . ':error',
                     'data' => [
-                        'message' => 'Channel not found',
+                        'message' => 'Channel not established',
                         'meta' => $message,
                     ],
                 ]));
@@ -357,10 +357,18 @@ class Handler implements MessageComponentInterface
             unset($message['data']['channel']);
         }
 
-        $this->channelManager->findOrCreate(
+        $channel = $this->channelManager->findOrCreate(
             $connection->app->id,
             $message['channel']
         );
+
+        if (! $channel->hasConnection($connection)) {
+            try{
+                $channel->subscribe($connection, (object) $message);
+            } catch (\Throwable $e) {
+                return null;
+            }
+        }
 
         return $this->channelManager->find(
             $connection->app->id,
@@ -370,8 +378,12 @@ class Handler implements MessageComponentInterface
 
     protected function handleChannelSubscriptions($message, $connection)
     {
-        $channel_name = optional($this->get_connection_channel($connection, $message))->getName() ?? 'no-channel';
+        $channel_name = optional($this->get_connection_channel($connection, $message))->getName();
         $socket_id = $connection->socketId;
+
+        if(! $channel_name) {
+            return;
+        }
 
         // if not in $channel_connections add it
         if (strpos($message['event'], '.subscribe') !== false) {
@@ -392,6 +404,8 @@ class Handler implements MessageComponentInterface
                 'ws_active_channels',
                 array_keys($this->channel_connections)
             );
+
+            $channel->subscribe($connection, $message);
         }
 
         if (strpos($message['event'], '.unsubscribe') !== false) {
@@ -546,6 +560,14 @@ class Handler implements MessageComponentInterface
                         $bm['including_self'],
                         $connection
                     );
+                } elseif (@$bm['whisper']) {
+                    $this->whisper(
+                        $connection->app->id,
+                        $bm['data'] ?? null,
+                        $bm['event'] ?? null,
+                        $bm['socket_ids'] ?? [],
+                        $bm['channel'] ?? null,
+                    );
                 } else {
                     $connection->send($sending);
                 }
@@ -583,6 +605,28 @@ class Handler implements MessageComponentInterface
 
             if ($including_self) {
                 $connection->send(json_encode($p));
+            }
+        }
+    }
+
+    public function whisper(
+        string $appId,
+        mixed $payload,
+        ?string $event = null,
+        array $socketIds = [],
+        ?string $channel = null
+    ): void {
+        $channel = $this->channelManager->findOrCreate($appId, $channel);
+
+        $p = [
+            'event' => ($event ?? $event),
+            'data' => $payload,
+            'channel' => $channel->getName(),
+        ];
+
+        foreach ($channel->getConnections() as $channel_conection) {
+            if (in_array($channel_conection->socketId, $socketIds)) {
+                $channel_conection->send(json_encode($p));
             }
         }
     }

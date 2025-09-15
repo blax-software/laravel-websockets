@@ -280,7 +280,47 @@ class Controller
                 $including_self
             );
         }
+    }
 
+    final public function whisper(
+        array|string|null $payload = null,
+        ?string $event = null,
+        array $socketIds,
+        ?string $channel = null
+    ){
+        if (is_string($payload)) {
+            $payload = [
+                'message' => $payload,
+            ];
+        }
+
+        $channel ??= ($this->channel ? $this->channel->getName() : null);
+
+        $p = [
+            'event' => ($event ?? $this->event),
+            'data' => $payload,
+            'channel' => $channel,
+        ];
+
+        if (get_class($this->connection) !== MockConnection::class) {
+            if (! $channel) {
+                $this->error('Channel not found');
+                return;
+            }
+
+            foreach ($this->channel->getConnections() as $channel_conection) {
+                if (in_array($channel_conection->socketId, $socketIds)) {
+                    $channel_conection->send(json_encode($p));
+                }
+            }
+        }else{
+            $connection = clone $this->connection;
+            $connection->whisper(
+                $p,
+                $socketIds,
+                $channel
+            );
+        }
     }
 
     protected static function get_uniquifyer($event)

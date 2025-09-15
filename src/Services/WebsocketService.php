@@ -4,20 +4,43 @@ declare(strict_types=1);
 
 namespace BlaxSoftware\LaravelWebSockets\Services;
 
-use BlaxSoftware\LaravelWebSockets\Events\WebsocketMessageEvent;
-
 class WebsocketService
 {
-    public static function send($data)
-    {
-        // TODO make work to send via websocket from anywhere
-        // WebsocketMessageEvent::dispatch(
-        //     optional(optional(tenant())->tenantable)->public_id,
-        //     $d['event'],
-        //     (is_array($d['data']))
-        //         ? $d['data']
-        //         : ['data' => $d['data']]
-        // );
+    public static function send(
+        string $event,
+        mixed $data,
+        $channel = 'websocket'
+    ) {
+        $client = new \WebSocket\Client('ws://0.0.0.0:6001/app/'.config('websockets.apps.0.id'), [
+            'timeout' => 5,
+            'headers' => [],
+        ]);
+
+        // Read connection_established
+        $client->receive();
+
+        // Subscribe (public channel)
+        $client->send(json_encode([
+            'event' => 'pusher:subscribe',
+            'data'  => ['channel' => 'websocket'],
+        ]));
+
+        // (Optionally read subscription_succeeded)
+        $client->receive();
+
+        // Send event to be processed by Handler
+        $client->send(json_encode([
+            'event' => $event,
+            'channel' => $channel ?? 'websocket',
+            'data' => $data,
+        ]));
+
+        // Read any response your controller might send (optional)
+        $response = $client->receive();
+
+        $client->close();
+
+        return json_decode($response);
     }
 
     public static function resetAllTracking()

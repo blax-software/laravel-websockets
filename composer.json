@@ -66,7 +66,8 @@
     },
     "suggest": {
         "ext-pcntl": "Running the server needs pcntl to listen to command signals and soft-shutdown.",
-        "doctrine/dbal": "Required to run database migrations (^2.9|^3.0)."
+        "doctrine/dbal": "Required to run database migrations (^2.9|^3.0).",
+        "textalk/websocket": "Required if you want to send data to the server like a client"
     },
     "autoload": {
         "psr-4": {
