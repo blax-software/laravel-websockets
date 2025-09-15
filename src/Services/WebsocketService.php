@@ -26,11 +26,13 @@ class WebsocketService
         cache()->forget('ws_active_channels');
         cache()->forget('ws_socket_auth');
         cache()->forget('ws_socket_auth_users');
+        cache()->forget('ws_socket_authed_users');
         cache()->forget('ws_channel_connections');
         cache()->forget('ws_connection');
 
         return true;
     }
+
 
     public static function getAuth(string $socketId)
     {
