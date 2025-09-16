@@ -123,7 +123,7 @@ class Handler implements MessageComponentInterface
 
             $this->authenticateConnection($connection, $channel, $message);
 
-            Log::channel('websocket')->info('Executing event: ' . $message['event']);
+            \Log::channel('websocket')->info('['.$connection->socketId.']@'.$channel->getName().' | ' . json_encode($message));
 
             if (strpos($message['event'], 'pusher') !== false) {
                 return $connection->send(json_encode([
@@ -360,7 +360,7 @@ class Handler implements MessageComponentInterface
             unset($message['data']['channel']);
         }
 
-        $channel = $this->channelManager->findOrCreate(
+        $this->channelManager->findOrCreate(
             $connection->app->id,
             $message['channel']
         );
@@ -382,7 +382,10 @@ class Handler implements MessageComponentInterface
         }
 
         // if not in $channel_connections add it
-        if (strpos($message['event'], '.subscribe') !== false) {
+        if (
+            (strtolower($message['event']) === 'pusher.subscribe')
+            || (strtolower($message['event']) === 'pusher:subscribe')
+        ) {
             if (! isset($this->channel_connections[$channel_name])) {
                 $this->channel_connections[$channel_name] = [];
             }
@@ -432,8 +435,6 @@ class Handler implements MessageComponentInterface
                 'ws_active_channels',
                 array_keys($this->channel_connections)
             );
-
-            Log::channel('websocket')->info('Tenant left', ['socketId' => $socket_id, 'channel' => $channel_name]);
         }
 
         return $channel;
