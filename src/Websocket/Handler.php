@@ -435,6 +435,8 @@ class Handler implements MessageComponentInterface
                 'ws_active_channels',
                 array_keys($this->channel_connections)
             );
+
+            $channel->unsubscribe($connection);
         }
 
         return $channel;
