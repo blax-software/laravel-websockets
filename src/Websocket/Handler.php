@@ -602,7 +602,7 @@ class Handler implements MessageComponentInterface
         ];
 
         foreach ($channel->getConnections() as $channel_conection) {
-            if ($channel_conection !== $connection) {
+            if ($channel_conection->socketId !== $connection->socketId) {
                 $channel_conection->send(json_encode($p));
             }
 
