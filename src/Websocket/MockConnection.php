@@ -15,6 +15,7 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
     public $tenantable;
     public $remoteAddress;
     public $ip;
+    public $app;
 
     public function __construct($original_connection)
     {
@@ -40,6 +41,7 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
             }
         }
 
+        $this->app = optional($original_connection)->app;
         $this->socketId = optional($original_connection)->socketId;
         $this->user = optional($original_connection)->user;
         $this->remoteAddress = optional($original_connection)->remoteAddress;
