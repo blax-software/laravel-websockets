@@ -54,11 +54,16 @@ class OpenPresenceChannel extends Channel
      */
     public function unsubscribe(ConnectionInterface $connection): PromiseInterface
     {
+        \Log::channel('websocket')->info('Presence unsub');
+
         $truth = parent::unsubscribe($connection);
+
+        \Log::channel('websocket')->info('Presence unsub 1');
 
         return $this->channelManager
             ->getLocalConnections()
             ->then(function ($connections) use ($connection) {
+                \Log::channel('websocket')->info('Presence unsub 2 local conn');
                 $this->informPresence($connection, $connections, true);
             })
             ->then(function () use ($truth) {
@@ -78,13 +83,17 @@ class OpenPresenceChannel extends Channel
                 ($isLeaving ? 'removed' : 'joined') => $connection->socketId,
                 'total_count' => collect($connections)
                     ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
+                    ->filter(fn($conn) => $isLeaving ? $conn->socketId != $connection->socketId : true)
                     ->count(),
                 'sockets' => collect($connections)
                     ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
+                    ->filter(fn($conn) => $isLeaving ? $conn->socketId != $connection->socketId : true)
                     ->pluck('socketId')->toArray(),
             ],
         ];
 
+        if (!$isLeaving)
+            $connection->send(json_encode($memberAddedPayload));
 
         if ($connection->remoteAddress && $connection->remoteAddress != '127.0.0.1') {
             $this->broadcastToEveryoneExcept(

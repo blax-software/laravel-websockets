@@ -111,7 +111,7 @@ class Handler implements MessageComponentInterface
 
             $channel = $this->handleChannelSubscriptions($message, $connection);
 
-            if (! $channel->hasConnection($connection) && (
+            if (! $channel->hasConnection($connection) && !(
                 $message['event'] !== 'pusher:unsubscribe'
                 && $message['event'] !== 'pusher.unsubscribe'
             )) {
@@ -126,7 +126,7 @@ class Handler implements MessageComponentInterface
 
             $this->authenticateConnection($connection, $channel, $message);
 
-            \Log::channel('websocket')->info('['.$connection->socketId.']@'.$channel->getName().' | ' . json_encode($message));
+            \Log::channel('websocket')->info('[' . $connection->socketId . ']@' . $channel->getName() . ' | ' . json_encode($message));
 
             if (strpos($message['event'], 'pusher') !== false) {
                 return $connection->send(json_encode([
@@ -374,13 +374,13 @@ class Handler implements MessageComponentInterface
         );
     }
 
-    protected function handleChannelSubscriptions($message, $connection) : ?Channel
+    protected function handleChannelSubscriptions($message, $connection): ?Channel
     {
         $channel = $this->get_connection_channel($connection, $message);
         $channel_name = optional($channel)->getName();
         $socket_id = $connection->socketId;
 
-        if(! $channel_name || ! $channel) {
+        if (! $channel_name || ! $channel) {
             return null;
         }
 
@@ -408,7 +408,7 @@ class Handler implements MessageComponentInterface
             );
 
             if (! $channel->hasConnection($connection)) {
-                try{
+                try {
                     $channel->subscribe($connection, (object) $message);
                 } catch (\Throwable $e) {
                     return null;
