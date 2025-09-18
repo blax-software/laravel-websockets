@@ -40,26 +40,7 @@ class OpenPresenceChannel extends Channel
                     ],
                 ]));
 
-                $memberAddedPayload = [
-                    'event' => 'presence.member_added',
-                    'channel' => $this->getName(),
-                    'data' => [
-                        'socket' => $connection->socketId, // added socket
-                        'total_count' => collect($connections)
-                            ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
-                            ->count(),
-                    ],
-                ];
-
-
-                if ($connection->remoteAddress && $connection->remoteAddress != '127.0.0.1') {
-                    $this->broadcastToEveryoneExcept(
-                        (object) $memberAddedPayload,
-                        $connection->socketId,
-                        $connection->app->id,
-                        false
-                    );
-                }
+                $this->informPresence($connection, $connections);
             });
 
         return true;
@@ -75,32 +56,43 @@ class OpenPresenceChannel extends Channel
     {
         $truth = parent::unsubscribe($connection);
 
-
         return $this->channelManager
             ->getLocalConnections()
             ->then(function ($connections) use ($connection) {
-                $memberRemovedPayload = [
-                    'event' => 'presence:member_removed',
-                    'channel' => $this->getName(),
-                    'data' => [
-                        'socket' => $connection->socketId,
-                        'total_count' => collect($connections)
-                            ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
-                            ->count(),
-                    ],
-                ];
-
-                if ($connection->remoteAddress && $connection->remoteAddress != '127.0.0.1') {
-                    $this->broadcastToEveryoneExcept(
-                        (object) $memberRemovedPayload,
-                        $connection->socketId,
-                        $connection->app->id,
-                        false
-                    );
-                }
+                $this->informPresence($connection, $connections, true);
             })
             ->then(function () use ($truth) {
                 return $truth;
             });
+    }
+
+    public function informPresence(
+        $connection,
+        $connections,
+        bool $isLeaving = false
+    ) {
+        $memberAddedPayload = [
+            'event' => 'presence.changed',
+            'channel' => $this->getName(),
+            'data' => [
+                ($isLeaving ? 'removed' : 'joined') => $connection->socketId,
+                'total_count' => collect($connections)
+                    ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
+                    ->count(),
+                'sockets' => collect($connections)
+                    ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
+                    ->pluck('socketId')->toArray(),
+            ],
+        ];
+
+
+        if ($connection->remoteAddress && $connection->remoteAddress != '127.0.0.1') {
+            $this->broadcastToEveryoneExcept(
+                (object) $memberAddedPayload,
+                $connection->socketId,
+                $connection->app->id,
+                false
+            );
+        }
     }
 }
