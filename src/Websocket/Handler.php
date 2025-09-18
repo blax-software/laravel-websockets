@@ -124,6 +124,16 @@ class Handler implements MessageComponentInterface
                 ]));
             }
 
+            if (!$channel) {
+                return $connection->send(json_encode([
+                    'event' => $message['event'] . ':error',
+                    'data' => [
+                        'message' => 'Channel not found',
+                        'meta' => $message,
+                    ],
+                ]));
+            }
+
             $this->authenticateConnection($connection, $channel, $message);
 
             \Log::channel('websocket')->info('[' . $connection->socketId . ']@' . $channel->getName() . ' | ' . json_encode($message));
