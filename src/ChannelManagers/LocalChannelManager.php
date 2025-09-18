@@ -4,6 +4,7 @@ namespace BlaxSoftware\LaravelWebSockets\ChannelManagers;
 
 use BlaxSoftware\LaravelWebSockets\Cache\ArrayLock;
 use BlaxSoftware\LaravelWebSockets\Channels\Channel;
+use BlaxSoftware\LaravelWebSockets\Channels\OpenPresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
@@ -537,6 +538,10 @@ class LocalChannelManager implements ChannelManager
 
         if (Str::startsWith($channelName, 'presence-')) {
             return PresenceChannel::class;
+        }
+
+        if (Str::startsWith($channelName, 'openpresence-')) {
+            return OpenPresenceChannel::class;
         }
 
         return Channel::class;
