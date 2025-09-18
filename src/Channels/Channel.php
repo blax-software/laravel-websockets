@@ -30,6 +30,13 @@ class Channel
     protected $connections = [];
 
     /**
+     * The channel manager instance.
+     *
+     * @var \BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager
+     */
+    public $channelManager;
+
+    /**
      * Create a new instance.
      *
      * @param  string  $name
