@@ -34,7 +34,7 @@ class OpenPresenceChannel extends Channel
                         'sockets' => collect($connections)
                             ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
                             ->pluck('socketId')->toArray(),
-                        'count' => collect($connections)
+                        'total_count' => collect($connections)
                             ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
                             ->count(),
                     ],
@@ -45,7 +45,7 @@ class OpenPresenceChannel extends Channel
                     'channel' => $this->getName(),
                     'data' => [
                         'socket' => $connection->socketId, // added socket
-                        'count' => collect($connections)
+                        'total_count' => collect($connections)
                             ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
                             ->count(),
                     ],
@@ -84,7 +84,7 @@ class OpenPresenceChannel extends Channel
                     'channel' => $this->getName(),
                     'data' => [
                         'socket' => $connection->socketId,
-                        'count' => collect($connections)
+                        'total_count' => collect($connections)
                             ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
                             ->count(),
                     ],
