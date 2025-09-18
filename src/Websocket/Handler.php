@@ -111,7 +111,7 @@ class Handler implements MessageComponentInterface
 
             $channel = $this->handleChannelSubscriptions($message, $connection);
 
-            if (! $channel->hasConnection($connection) && !(
+            if (! optional($channel)->hasConnection($connection) && !(
                 $message['event'] !== 'pusher:unsubscribe'
                 && $message['event'] !== 'pusher.unsubscribe'
             )) {
