@@ -153,6 +153,7 @@ class Handler implements MessageComponentInterface
                 Log::error('Fork error');
             } elseif ($pid == 0) {
                 try {
+                    DB::disconnect();
                     DB::reconnect();
 
                     $this->setRequest($message, $connection);
