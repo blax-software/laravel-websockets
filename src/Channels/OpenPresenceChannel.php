@@ -24,24 +24,22 @@ class OpenPresenceChannel extends Channel
     {
         parent::subscribe($connection, $payload);
 
-        $this->channelManager
-            ->getLocalConnections()
-            ->then(function ($connections) use ($connection) {
-                $connection->send(json_encode([
-                    'event' => 'presence.subscription_succeeded',
-                    'channel' => $this->getName(),
-                    'data' => [
-                        'sockets' => collect($connections)
-                            ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
-                            ->pluck('socketId')->toArray(),
-                        'total_count' => collect($connections)
-                            ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
-                            ->count(),
-                    ],
-                ]));
+        $connections = $this->getConnections();
 
-                $this->informPresence($connection, $connections);
-            });
+        $connection->send(json_encode([
+            'event' => 'presence.subscription_succeeded',
+            'channel' => $this->getName(),
+            'data' => [
+                'sockets' => collect($connections)
+                    ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
+                    ->pluck('socketId')->toArray(),
+                'total_count' => collect($connections)
+                    ->filter(fn($conn) => ($conn->remoteAddress && $conn->remoteAddress != '127.0.0.1'))
+                    ->count(),
+            ],
+        ]));
+
+        $this->informPresence($connection, $connections);
 
         return true;
     }
@@ -54,21 +52,11 @@ class OpenPresenceChannel extends Channel
      */
     public function unsubscribe(ConnectionInterface $connection): PromiseInterface
     {
-        \Log::channel('websocket')->info('Presence unsub');
-
         $truth = parent::unsubscribe($connection);
 
-        \Log::channel('websocket')->info('Presence unsub 1');
+        $this->informPresence($connection, $this->getConnections(), true);
 
-        return $this->channelManager
-            ->getLocalConnections()
-            ->then(function ($connections) use ($connection) {
-                \Log::channel('websocket')->info('Presence unsub 2 local conn');
-                $this->informPresence($connection, $connections, true);
-            })
-            ->then(function () use ($truth) {
-                return $truth;
-            });
+        return $truth;
     }
 
     public function informPresence(
