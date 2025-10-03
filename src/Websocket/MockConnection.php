@@ -59,6 +59,11 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
             return $this;
         }
 
+        // if data is boolean, throw
+        if (is_bool($data)) {
+            throw new \InvalidArgumentException('Data must be a string or an object that can be converted to a string.');
+        }
+
         Log::channel('websocket')->info('[MockConnection] Send for pid: ' . getmypid(), [
             'data' => $data,
         ]);
