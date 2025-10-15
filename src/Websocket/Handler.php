@@ -475,7 +475,7 @@ class Handler implements MessageComponentInterface
     protected function authenticateConnection(
         ConnectionInterface $connection,
         PrivateChannel|Channel|PresenceChannel|null $channel,
-        array|null|mixed $message = []
+        $message = []
     ) {
 
         if (! optional($connection)->auth && $connection->socketId && cache()->get('socket_' . $connection->socketId)) {
