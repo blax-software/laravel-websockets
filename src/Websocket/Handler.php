@@ -150,7 +150,6 @@ class Handler implements MessageComponentInterface
             $pid = pcntl_fork();
 
             if ($pid == -1) {
-                Auth::logout();
                 Log::error('Fork error');
             } elseif ($pid == 0) {
                 try {
@@ -182,7 +181,6 @@ class Handler implements MessageComponentInterface
 
                 exit(0);
             } else {
-                Auth::logout();
                 $this->addDataCheckLoop($connection, $message, $pid);
             }
         } catch (\Throwable $e) {
@@ -250,8 +248,6 @@ class Handler implements MessageComponentInterface
                     cache()->forget('ws_connection_' . $connection->socketId);
                 }
             });
-
-        Auth::logout();
     }
 
     /**
@@ -479,6 +475,7 @@ class Handler implements MessageComponentInterface
     protected function authenticateConnection(
         ConnectionInterface $connection,
         PrivateChannel|Channel|PresenceChannel|null $channel,
+        array|null|mixed $message = []
     ) {
 
         if (! optional($connection)->auth && $connection->socketId && cache()->get('socket_' . $connection->socketId)) {
@@ -519,6 +516,11 @@ class Handler implements MessageComponentInterface
             $authed_users = cache()->get('ws_socket_authed_users') ?? [];
             $authed_users[$connection->socketId] = $user->id;
             cache()->forever('ws_socket_authed_users', $authed_users);
+
+            \BlaxSoftware\LaravelWebSockets\Services\WebsocketService::setUserAuthed(
+                $connection->socketId,
+                $user
+            );
         }
 
         // add next in loop logout
