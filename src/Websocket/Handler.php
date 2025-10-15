@@ -134,7 +134,7 @@ class Handler implements MessageComponentInterface
                 ]));
             }
 
-            $this->authenticateConnection($connection, $channel);
+            $this->authenticateConnection($connection, $channel, $message);
 
             \Log::channel('websocket')->info('[' . $connection->socketId . ']@' . $channel->getName() . ' | ' . json_encode($message));
 
@@ -478,13 +478,15 @@ class Handler implements MessageComponentInterface
         $message = []
     ) {
 
-        if (! optional($connection)->auth && $connection->socketId && cache()->get('socket_' . $connection->socketId)) {
-
-            $cached_auth = cache()->get('socket_' . $connection->socketId);
-
+        if (
+            !optional($connection)->auth
+            && $connection->socketId
+            && ($cached_auth = cache()->get('socket_' . $connection->socketId))
+            && @$cached_auth['type']
+        ) {
             $connection->user = @$cached_auth['type']::find($cached_auth['id']);
 
-            if($channel){
+            if ($channel) {
                 $channel->saveConnection($connection);
             }
         }
