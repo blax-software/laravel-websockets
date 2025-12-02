@@ -75,42 +75,55 @@ class StartServer extends Command
      */
     public function handle()
     {
-        $this->components->info('Handling websocket server with pid ' . getmypid() . '...');
+        try {
+            $this->components->info('Handling websocket server with pid ' . getmypid() . '...');
 
-        // For is_fork() helper
-        if (! defined('LARAVEL_PARENT_PID')) {
-            define('LARAVEL_PARENT_PID', getmypid());
+            // For is_fork() helper
+            if (! defined('LARAVEL_PARENT_PID')) {
+                define('LARAVEL_PARENT_PID', getmypid());
+            }
+
+            // For is_websocket() helper
+            if (! defined('LARAVEL_IS_WEBSOCKET')) {
+                define('LARAVEL_IS_WEBSOCKET', true);
+            }
+
+            // Fixes redis concurrency issues
+            config(['cache.default' => $this->option('cache-driver', 'file')]);
+
+            WebsocketService::resetAllTracking();
+
+            $this->laravel->singleton(LoopInterface::class, function () {
+                return $this->loop;
+            });
+
+            $this->configureLoggers();
+
+            $this->configureManagers();
+
+            $this->configureStatistics();
+
+            $this->configureRestartTimer();
+
+            $this->configureRoutes();
+
+            $this->configurePcntlSignal();
+
+            // $this->configurePongTracker();
+
+            $this->startServer();
+        } catch (\Throwable $e) {
+            $this->error('Error starting the WebSocket server: ' . $e->getMessage());
+
+            \Log::error('Error starting the WebSocket server: ', [
+                'exception' => $e,
+            ]);
+
+            // if sentry is defined capture exception
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($e);
+            }
         }
-
-        // For is_websocket() helper
-        if (! defined('LARAVEL_IS_WEBSOCKET')) {
-            define('LARAVEL_IS_WEBSOCKET', true);
-        }
-
-        // Fixes redis concurrency issues
-        config(['cache.default' => $this->option('cache-driver', 'file')]);
-
-        WebsocketService::resetAllTracking();
-
-        $this->laravel->singleton(LoopInterface::class, function () {
-            return $this->loop;
-        });
-
-        $this->configureLoggers();
-
-        $this->configureManagers();
-
-        $this->configureStatistics();
-
-        $this->configureRestartTimer();
-
-        $this->configureRoutes();
-
-        $this->configurePcntlSignal();
-
-        // $this->configurePongTracker();
-
-        $this->startServer();
     }
 
     /**
