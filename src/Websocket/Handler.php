@@ -177,6 +177,11 @@ class Handler implements MessageComponentInterface
                             'message' => $e->getMessage(),
                         ],
                     ]));
+
+                    // if sentry is defined capture exception
+                    if (app()->bound('sentry')) {
+                        app('sentry')->captureException($e);
+                    }
                 }
 
                 exit(0);
@@ -189,8 +194,12 @@ class Handler implements MessageComponentInterface
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
-        }
 
+            // if sentry is defined capture exception
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($e);
+            }
+        }
     }
 
     /**
@@ -494,7 +503,7 @@ class Handler implements MessageComponentInterface
         // Update last online of user if user
         if (! optional($connection)->user) {
             $connection->user = false;
-            if($channel){
+            if ($channel) {
                 $channel->saveConnection($connection);
             }
         }
