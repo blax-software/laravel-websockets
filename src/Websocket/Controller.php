@@ -14,12 +14,23 @@ use Illuminate\Support\Facades\Log;
 
 class Controller
 {
+    protected bool $isMockConnection;
+    protected ?MockConnection $mockConnectionClone = null;
+
     final public function __construct(
         protected ConnectionInterface $connection,
         protected PrivateChannel|Channel|PresenceChannel|null $channel,
         protected string $event,
         protected LocalChannelManager|RedisChannelManager $channelManager
-    ) {}
+    ) {
+        // Cache class check to avoid repeated get_class() calls (reflection is slow)
+        $this->isMockConnection = get_class($connection) === MockConnection::class;
+
+        // Pre-clone MockConnection once if needed (reuse across method calls)
+        if ($this->isMockConnection) {
+            $this->mockConnectionClone = clone $connection;
+        }
+    }
 
     public static function controll_message(
         ConnectionInterface $connection,
@@ -28,59 +39,38 @@ class Controller
         LocalChannelManager|RedisChannelManager $channelManager
     ) {
         $event = self::get_event($message);
-
-        if (count($event) != 2) {
-            return $connection->send(json_encode([
-                'event' => $message['event'] . ':error',
-                'data' => [
-                    'message' => 'Event unknown',
-                ],
-                'channel' => $message['channel'],
-            ]));
+        if (count($event) !== 2) {
+            return self::send_error($connection, $message, 'Event unknown');
         }
 
         try {
             $contr = (strpos($event[0], '-') >= 0)
-                ? implode('', array_map(fn ($item) => ucfirst($item), explode('-', $event[0])))
+                ? implode('', array_map(fn($item) => ucfirst($item), explode('-', $event[0])))
                 : ucfirst($event[0]);
 
-            $vendorcontroller = '\BlaxSoftware\LaravelWebSockets\Websocket\Controllers\\' . $contr . 'Controller';
-            $appcontroller = '\App\Websocket\Controllers\\' . $contr . 'Controller';
+            $vendorcontroller = '\\BlaxSoftware\\LaravelWebSockets\\Websocket\\Controllers\\' . $contr . 'Controller';
+            $appcontroller = '\\App\\Websocket\\Controllers\\' . $contr . 'Controller';
             $method = static::without_uniquifyer($event[1]);
 
-            $controller = class_exists($appcontroller)
+            $controllerClass = class_exists($appcontroller)
                 ? $appcontroller
-                : $vendorcontroller;
+                : (class_exists($vendorcontroller) ? $vendorcontroller : null);
 
-            if (! $controller) {
-                return $connection->send(json_encode([
-                    'event' => $message['event'] . ':error',
-                    'data' => [
-                        'message' => 'Event could not be associated',
-                    ],
-                    'channel' => $message['channel'],
-                ]));
+            if (! $controllerClass) {
+                return self::send_error($connection, $message, 'Event could not be associated');
             }
 
-            if (! method_exists($controller, $method)) {
-                return $connection->send(json_encode([
-                    'event' => $message['event'] . ':error',
-                    'data' => [
-                        'message' => 'Event could not be handled',
-                    ],
-                    'channel' => $message['channel'],
-                ]));
+            if (! method_exists($controllerClass, $method)) {
+                return self::send_error($connection, $message, 'Event could not be handled');
             }
 
-            // Instantiate the controller
-            $controller = (new $controller(
+            $controller = new $controllerClass(
                 $connection,
                 $channel,
                 $message['event'],
                 $channelManager
-            ));
+            );
 
-            // Return unauthorized if auth is required
             if (($controller->need_auth ?? true) && ! $connection->user) {
                 return $controller->error('Unauthorized');
             }
@@ -91,11 +81,8 @@ class Controller
                 $message['channel']
             );
 
-            if (
-                $payload === false
-                || $payload === true
-            ) {
-                return;
+            if ($payload === false || $payload === true) {
+                return null;
             }
 
             $connection->send(json_encode([
@@ -115,32 +102,19 @@ class Controller
             ];
             Log::error($e->getMessage(), $reload);
 
-            return $connection->send(json_encode([
-                'event' => $message['event'] . ':error',
-                'data' => [
-                    'message' => $e->getMessage(),
-                    'meta' => [
-                        'reported' => true,
-                    ],
-                ],
-                'channel' => $message['channel'],
-            ]));
-        }
+            if (app()->bound('sentry')) {
+                app('sentry')->captureException($e);
+            }
 
-        return $connection->send(json_encode([
-            'event' => $message['event'] . ':error',
-            'data' => [
-                'message' => 'An unknown error occured',
-            ],
-            'channel' => $message['channel'],
-        ]));
+            return self::send_error($connection, $message, $e->getMessage(), true);
+        }
     }
 
     final public function progress(
         mixed $payload = null,
         ?string $event = null,
         ?string $channel = null
-    ) : bool {
+    ): bool {
         $p = [
             'event' => ($event ?? $this->event) . ':progress',
             'data' => $payload,
@@ -155,11 +129,13 @@ class Controller
             $p['data'] = $payload['data'];
         }
 
-        if (get_class($this->connection) === MockConnection::class) {
-            $connection = clone $this->connection;
-            $connection->send(json_encode($p));
+        // Pre-encode once (avoid repeated encoding)
+        $encoded = json_encode($p);
+
+        if ($this->isMockConnection) {
+            $this->mockConnectionClone->send($encoded);
         } else {
-            $this->connection->send(json_encode($p));
+            $this->connection->send($encoded);
         }
 
         return true;
@@ -169,7 +145,7 @@ class Controller
         mixed $payload = null,
         ?string $event = null,
         ?string $channel = null
-    ) : bool {
+    ): bool {
         $p = [
             'event' => ($event ?? $this->event) . ':response',
             'data' => $payload,
@@ -184,11 +160,13 @@ class Controller
             $p['data'] = $payload['data'];
         }
 
-        if (get_class($this->connection) === MockConnection::class) {
-            $connection = clone $this->connection;
-            $connection->send(json_encode($p));
+        // Pre-encode once (avoid repeated encoding)
+        $encoded = json_encode($p);
+
+        if ($this->isMockConnection) {
+            $this->mockConnectionClone->send($encoded);
         } else {
-            $this->connection->send(json_encode($p));
+            $this->connection->send($encoded);
         }
 
         return true;
@@ -198,7 +176,7 @@ class Controller
         array|string|null $payload = null,
         ?string $event = null,
         ?string $channel = null
-    ) : bool {
+    ): bool {
         if (is_string($payload)) {
             $payload = [
                 'message' => $payload,
@@ -227,11 +205,13 @@ class Controller
 
         Log::channel('websocket')->error('Send error: ' . @$p['data']['message'], $p);
 
-        if (get_class($this->connection) === MockConnection::class) {
-            $connection = clone $this->connection;
-            $connection->send(json_encode($p));
+        // Pre-encode once (avoid repeated encoding)
+        $encoded = json_encode($p);
+
+        if ($this->isMockConnection) {
+            $this->mockConnectionClone->send($encoded);
         } else {
-            $this->connection->send(json_encode($p));
+            $this->connection->send($encoded);
         }
 
         return true;
@@ -242,7 +222,7 @@ class Controller
         ?string $event = null,
         ?string $channel = null,
         bool $including_self = false
-    ){
+    ) {
         if (is_string($payload)) {
             $payload = [
                 'message' => $payload,
@@ -257,24 +237,26 @@ class Controller
             'channel' => $channel,
         ];
 
-        if (get_class($this->connection) !== MockConnection::class) {
+        if (!$this->isMockConnection) {
             if (! $channel) {
                 $this->error('Channel not found');
                 return;
             }
 
+            // Pre-encode ONCE - massive improvement for 100+ connections
+            $encoded = json_encode($p);
+
             foreach ($this->channel->getConnections() as $channel_conection) {
                 if ($channel_conection !== $this->connection) {
-                    $channel_conection->send(json_encode($p));
+                    $channel_conection->send($encoded);
                 }
 
                 if ($including_self) {
-                    $this->connection->send(json_encode($p));
+                    $this->connection->send($encoded);
                 }
             }
-        }else{
-            $connection = clone $this->connection;
-            $connection->broadcast(
+        } else {
+            $this->mockConnectionClone->broadcast(
                 $p,
                 $channel,
                 $including_self
@@ -287,7 +269,7 @@ class Controller
         ?string $event = null,
         array $socketIds,
         ?string $channel = null
-    ){
+    ) {
         if (is_string($payload)) {
             $payload = [
                 'message' => $payload,
@@ -302,25 +284,50 @@ class Controller
             'channel' => $channel,
         ];
 
-        if (get_class($this->connection) !== MockConnection::class) {
+        if (!$this->isMockConnection) {
             if (! $channel) {
                 $this->error('Channel not found');
                 return;
             }
 
+            // Pre-encode ONCE for all matching sockets
+            $encoded = json_encode($p);
+
+            // Use array_flip for O(1) lookup instead of O(n) in_array
+            $socketIdLookup = array_flip($socketIds);
+
             foreach ($this->channel->getConnections() as $channel_conection) {
-                if (in_array($channel_conection->socketId, $socketIds)) {
-                    $channel_conection->send(json_encode($p));
+                if (isset($socketIdLookup[$channel_conection->socketId])) {
+                    $channel_conection->send($encoded);
                 }
             }
-        }else{
-            $connection = clone $this->connection;
-            $connection->whisper(
+        } else {
+            $this->mockConnectionClone->whisper(
                 $p,
                 $socketIds,
                 $channel
             );
         }
+    }
+
+    private static function send_error(
+        ConnectionInterface $connection,
+        array $message,
+        string $reason,
+        bool $reported = false
+    ) {
+        $connection->send(json_encode([
+            'event' => ($message['event'] ?? 'unknown') . ':error',
+            'data' => [
+                'message' => $reason,
+                'meta' => [
+                    'reported' => $reported,
+                ],
+            ],
+            'channel' => $message['channel'] ?? null,
+        ]));
+
+        return null;
     }
 
     protected static function get_uniquifyer($event)
