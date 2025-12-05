@@ -209,6 +209,10 @@ class Handler implements MessageComponentInterface
     {
         $this->authenticateConnection($connection, null);
 
+        if (@$connection?->remoteAddress) {
+            request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
+        }
+
         // remove connection from $channel_connections
         foreach ($this->channel_connections as $channel => $connections) {
             if (in_array($connection->socketId, $connections)) {

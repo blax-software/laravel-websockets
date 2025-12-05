@@ -36,15 +36,16 @@ class WebSocketsServiceProvider extends ServiceProvider
     public function boot()
     {
         $this->publishes([
-            __DIR__.'/../config/websockets.php' => config_path('websockets.php'),
+            __DIR__ . '/../config/websockets.php' => config_path('websockets.php'),
         ], 'config');
 
         $this->mergeConfigFrom(
-            __DIR__.'/../config/websockets.php', 'websockets'
+            __DIR__ . '/../config/websockets.php',
+            'websockets'
         );
 
         $this->publishes([
-            __DIR__.'/Websocket' => app_path('Websocket')
+            __DIR__ . '/Websocket' => app_path('Websocket')
         ]);
 
         $this->registerDefaultWebsocketChannels();
@@ -66,6 +67,8 @@ class WebSocketsServiceProvider extends ServiceProvider
         $this->registerStatistics();
 
         $this->registerDashboard();
+
+        $this->registerBroadcastAuthRoute();
 
         $this->registerCommands();
     }
@@ -123,7 +126,7 @@ class WebSocketsServiceProvider extends ServiceProvider
             $migrations = (new Finder())
                 ->files()
                 ->ignoreDotFiles(true)
-                ->in(__DIR__.'/../database/migrations/sqlite')
+                ->in(__DIR__ . '/../database/migrations/sqlite')
                 ->name('*.sql');
 
             /** @var SplFileInfo $migration */
@@ -140,11 +143,11 @@ class WebSocketsServiceProvider extends ServiceProvider
         $this->app->singleton(ConnectionInterface::class, function () {
             $factory = new MySQLFactory($this->app->make(LoopInterface::class));
 
-            $connectionKey = 'database.connections.'.config('websockets.managers.mysql.connection');
+            $connectionKey = 'database.connections.' . config('websockets.managers.mysql.connection');
 
-            $auth = trim(config($connectionKey.'.username').':'.config($connectionKey.'.password'), ':');
-            $connection = trim(config($connectionKey.'.host').':'.config($connectionKey.'.port'), ':');
-            $database = config($connectionKey.'.database');
+            $auth = trim(config($connectionKey . '.username') . ':' . config($connectionKey . '.password'), ':');
+            $connection = trim(config($connectionKey . '.host') . ':' . config($connectionKey . '.port'), ':');
+            $database = config($connectionKey . '.database');
 
             $database = $factory->createLazyConnection(trim("{$auth}@{$connection}/{$database}", '@'));
 
@@ -183,7 +186,7 @@ class WebSocketsServiceProvider extends ServiceProvider
      */
     protected function registerDashboard()
     {
-        $this->loadViewsFrom(__DIR__.'/../resources/views/', 'websockets');
+        $this->loadViewsFrom(__DIR__ . '/../resources/views/', 'websockets');
 
         $this->registerDashboardRoutes();
         $this->registerDashboardGate();
@@ -262,6 +265,19 @@ class WebSocketsServiceProvider extends ServiceProvider
         Gate::define('viewWebSocketsDashboard', function ($user = null) {
             return $this->app->environment('local');
         });
+    }
+
+    /**
+     * Register the default broadcasting routes if not already defined.
+     *
+     * @return void
+     */
+    protected function registerBroadcastAuthRoute()
+    {
+        // If broadcasting/auth route is not defined, load the default routes
+        if (! Route::has('broadcasting/auth')) {
+            $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        }
     }
 
     protected function registerWebSocketHandler()
