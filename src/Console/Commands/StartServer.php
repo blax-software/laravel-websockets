@@ -186,6 +186,10 @@ class StartServer extends Command
 
         $this->loop->addPeriodicTimer(10, function () {
             if ($this->getLastRestart() !== $this->lastRestart) {
+                \Log::channel('websocket')->info('Restart detected, triggering soft shutdown...', [
+                    'previous_restart' => $this->lastRestart,
+                    'current_restart' => $this->getLastRestart(),
+                ]);
                 $this->triggerSoftShutdown();
             }
         });
