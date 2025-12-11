@@ -222,12 +222,14 @@ class StartServer extends Command
         }
 
         $this->loop->addSignal(SIGTERM, function () {
+            \Log::channel('websocket')->info('Received SIGTERM, closing existing connections...');
             $this->line('Closing existing connections...');
 
             $this->triggerSoftShutdown();
         });
 
         $this->loop->addSignal(SIGINT, function () {
+            \Log::channel('websocket')->info('Received SIGINT, closing existing connections...');
             $this->line('Closing existing connections...');
 
             $this->triggerSoftShutdown();
