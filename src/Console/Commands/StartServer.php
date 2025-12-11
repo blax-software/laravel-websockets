@@ -294,6 +294,11 @@ class StartServer extends Command
      */
     protected function startServer()
     {
+        \Log::channel('websocket')->info('Starting WebSocket server...', [
+            'host' => $this->option('host'),
+            'port' => $this->option('port'),
+        ]);
+
         $this->components->info("Starting the WebSocket server on port {$this->option('port')}...");
         $this->comment('  <fg=yellow;options=bold>Press Ctrl+C to stop the server</>');
         $this->newLine();
@@ -346,6 +351,7 @@ class StartServer extends Command
      */
     protected function triggerSoftShutdown()
     {
+        \Log::channel('websocket')->info('Triggering soft shutdown...');
         $channelManager = $this->laravel->make(ChannelManager::class);
 
         // Close the new connections allowance on this server.
