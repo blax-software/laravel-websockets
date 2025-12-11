@@ -33,6 +33,8 @@ class RestartServer extends Command
     {
         \Log::channel('websocket')->info('WebSocket restart server command called ...');
 
+        config(['cache.default' => $this->option('cache-driver', 'file')]);
+
         Cache::forever(
             'blax:websockets:restart',
             $this->currentTime()
