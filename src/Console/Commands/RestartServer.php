@@ -15,7 +15,8 @@ class RestartServer extends Command
      *
      * @var string
      */
-    protected $signature = 'websockets:restart';
+    protected $signature = 'websockets:restart
+        {--cache-driver=file : The cache driver to use for the server. Redis will not work due to concurrency issues.}';
 
     /**
      * The console command description.
