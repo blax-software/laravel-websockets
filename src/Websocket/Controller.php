@@ -32,6 +32,30 @@ class Controller
         }
     }
 
+    /**
+     * To be overridden by child classes if needed
+     * Called before need_auth check
+     *
+     * @return void
+     */
+    public function boot(): void {}
+
+    /**
+     * To be overridden by child classes if needed
+     * Called after need_auth check
+     *
+     * @return void
+     */
+    public function booted(): void {}
+
+    /**
+     * To be overridden by child classes if needed
+     * Called after main function execution (even if not found)
+     *
+     * @return void
+     */
+    public function unboot(): void {}
+
     public static function controll_message(
         ConnectionInterface $connection,
         PrivateChannel|Channel|PresenceChannel $channel,
@@ -60,10 +84,6 @@ class Controller
                 return self::send_error($connection, $message, 'Event could not be associated');
             }
 
-            if (! method_exists($controllerClass, $method)) {
-                return self::send_error($connection, $message, 'Event could not be handled');
-            }
-
             $controller = new $controllerClass(
                 $connection,
                 $channel,
@@ -71,15 +91,33 @@ class Controller
                 $channelManager
             );
 
+            $controller->boot();
+
             if (($controller->need_auth ?? true) && ! $connection->user) {
-                return $controller->error('Unauthorized');
+                $e = $controller->error('Unauthorized');
+
+                $controller->unboot();
+
+                return $e;
             }
+
+            if (! method_exists($controllerClass, $method)) {
+                $e = self::send_error($connection, $message, 'Event could not be handled');
+
+                $controller->unboot();
+
+                return $e;
+            }
+
+            $controller->booted();
 
             $payload = $controller->$method(
                 $connection,
                 @$message['data'] ?? [],
                 $message['channel']
             );
+
+            $controller->unboot();
 
             if ($payload === false || $payload === true) {
                 return null;
