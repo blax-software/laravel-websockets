@@ -35,18 +35,20 @@ class Controller
     /**
      * To be overridden by child classes if needed
      * Called before need_auth check
+     * If return is exactly false, processing stops
      *
      * @return void
      */
-    public function boot(): void {}
+    public function boot() {}
 
     /**
      * To be overridden by child classes if needed
      * Called after need_auth check
+     * If return is exactly false, processing stops
      *
      * @return void
      */
-    public function booted(): void {}
+    public function booted() {}
 
     /**
      * To be overridden by child classes if needed
@@ -91,25 +93,25 @@ class Controller
                 $channelManager
             );
 
-            $controller->boot();
+            if ($controller->boot() === false) {
+                return;
+            }
 
             if (($controller->need_auth ?? true) && ! $connection->user) {
-                $e = $controller->error('Unauthorized');
-
+                $controller->error('Unauthorized');
                 $controller->unboot();
-
-                return $e;
+                return;
             }
 
             if (! method_exists($controllerClass, $method)) {
-                $e = self::send_error($connection, $message, 'Event could not be handled');
-
+                $controller->error($connection, $message, 'Event could not be handled');
                 $controller->unboot();
-
-                return $e;
+                return;
             }
 
-            $controller->booted();
+            if ($controller->booted() === false) {
+                return;
+            }
 
             $payload = $controller->$method(
                 $connection,
