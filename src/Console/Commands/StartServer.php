@@ -91,6 +91,16 @@ class StartServer extends Command
     public function handle()
     {
         try {
+            \Log::channel('websocket')->debug('websockets:serve command started', [
+                'pid' => getmypid(),
+                'host' => $this->option('host'),
+                'port' => $this->option('port'),
+                'cache_driver' => $this->option('cache-driver'),
+                'disable_statistics' => $this->option('disable-statistics'),
+                'debug' => $this->option('debug'),
+                'soft' => $this->option('soft'),
+            ]);
+
             $this->components->info('Handling websocket server with pid ' . getmypid() . '...');
 
             // For is_fork() helper
@@ -105,27 +115,43 @@ class StartServer extends Command
 
             // Fixes redis concurrency issues
             config(['cache.default' => $this->option('cache-driver', 'file')]);
+            \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $this->option('cache-driver', 'file')]);
 
             WebsocketService::resetAllTracking();
+            \Log::channel('websocket')->debug('WebsocketService tracking reset');
 
             $this->laravel->singleton(LoopInterface::class, function () {
                 return $this->loop;
             });
+            \Log::channel('websocket')->debug('LoopInterface singleton registered');
 
+            \Log::channel('websocket')->debug('Configuring loggers...');
             $this->configureLoggers();
+            \Log::channel('websocket')->debug('Loggers configured');
 
+            \Log::channel('websocket')->debug('Configuring managers...');
             $this->configureManagers();
+            \Log::channel('websocket')->debug('Managers configured');
 
+            \Log::channel('websocket')->debug('Configuring statistics...');
             $this->configureStatistics();
+            \Log::channel('websocket')->debug('Statistics configured');
 
+            \Log::channel('websocket')->debug('Configuring restart timer...');
             $this->configureRestartTimer();
+            \Log::channel('websocket')->debug('Restart timer configured');
 
+            \Log::channel('websocket')->debug('Configuring routes...');
             $this->configureRoutes();
+            \Log::channel('websocket')->debug('Routes configured');
 
+            \Log::channel('websocket')->debug('Configuring PCNTL signals...');
             $this->configurePcntlSignal();
+            \Log::channel('websocket')->debug('PCNTL signals configured');
 
             // $this->configurePongTracker();
 
+            \Log::channel('websocket')->debug('Starting server...');
             $this->startServer();
         } catch (\Throwable $e) {
             $this->error('Error starting the WebSocket server: ' . $e->getMessage());
@@ -148,8 +174,11 @@ class StartServer extends Command
      */
     protected function configureLoggers()
     {
+        \Log::channel('websocket')->debug('Configuring HTTP logger...');
         $this->configureHttpLogger();
+        \Log::channel('websocket')->debug('Configuring message logger...');
         $this->configureMessageLogger();
+        \Log::channel('websocket')->debug('Configuring connection logger...');
         $this->configureConnectionLogger();
     }
 
@@ -167,6 +196,11 @@ class StartServer extends Command
 
             $class = $config['replication']['modes'][$mode]['channel_manager'];
 
+            \Log::channel('websocket')->debug('Creating ChannelManager', [
+                'mode' => $mode,
+                'class' => $class,
+            ]);
+
             return new $class($this->loop);
         });
     }
@@ -182,11 +216,18 @@ class StartServer extends Command
         if (! $this->option('disable-statistics')) {
             $intervalInSeconds = $this->option('statistics-interval') ?: config('websockets.statistics.interval_in_seconds', 3600);
 
+            \Log::channel('websocket')->debug('Statistics enabled', [
+                'interval_seconds' => $intervalInSeconds,
+            ]);
+
             $this->loop->addPeriodicTimer($intervalInSeconds, function () {
+                \Log::channel('websocket')->debug('Statistics timer tick, saving...');
                 $this->line('Saving statistics...', null, OutputInterface::VERBOSITY_VERBOSE);
 
                 StatisticsCollectorFacade::save();
             });
+        } else {
+            \Log::channel('websocket')->debug('Statistics disabled');
         }
     }
 
@@ -200,9 +241,18 @@ class StartServer extends Command
         $restartData = $this->getLastRestartData();
         $this->lastRestart = $restartData['time'] ?? null;
 
+        \Log::channel('websocket')->debug('Restart timer configured', [
+            'initial_restart_time' => $this->lastRestart,
+        ]);
+
         $this->loop->addPeriodicTimer(10, function () {
             $restartData = $this->getLastRestartData();
             $currentRestart = $restartData['time'] ?? null;
+
+            \Log::channel('websocket')->debug('Restart timer tick', [
+                'last_restart' => $this->lastRestart,
+                'current_restart' => $currentRestart,
+            ]);
 
             // Only trigger restart if lastRestart was set and a new restart signal was received
             if ($this->lastRestart !== null && $currentRestart !== null && $currentRestart !== $this->lastRestart) {
@@ -229,7 +279,9 @@ class StartServer extends Command
      */
     protected function configureRoutes()
     {
+        \Log::channel('websocket')->debug('Registering WebSocket routes...');
         WebSocketRouter::registerRoutes();
+        \Log::channel('websocket')->debug('WebSocket routes registered');
     }
 
     /**
@@ -245,8 +297,11 @@ class StartServer extends Command
         // then stopping the loop.
 
         if (! extension_loaded('pcntl')) {
+            \Log::channel('websocket')->error('pcntl extension not loaded');
             throw new \RuntimeException('The pcntl extension is required to handle concurrency.');
         }
+
+        \Log::channel('websocket')->debug('pcntl extension loaded, registering signal handlers...');
 
         $this->loop->addSignal(SIGTERM, function () {
             \Log::channel('websocket')->info('Received SIGTERM, shutting down...');
@@ -254,6 +309,7 @@ class StartServer extends Command
 
             $this->triggerShutdown();
         });
+        \Log::channel('websocket')->debug('SIGTERM handler registered');
 
         $this->loop->addSignal(SIGINT, function () {
             \Log::channel('websocket')->info('Received SIGINT, shutting down...');
@@ -261,6 +317,7 @@ class StartServer extends Command
 
             $this->triggerShutdown();
         });
+        \Log::channel('websocket')->debug('SIGINT handler registered');
     }
 
     /**
@@ -336,9 +393,12 @@ class StartServer extends Command
         $this->comment('  <fg=yellow;options=bold>Press Ctrl+C to stop the server</>');
         $this->newLine();
 
+        \Log::channel('websocket')->debug('Building server instance...');
         $this->buildServer();
+        \Log::channel('websocket')->debug('Server instance built, starting event loop...');
 
         $this->server->run();
+        \Log::channel('websocket')->debug('Event loop stopped, server shutdown complete');
     }
 
     /**
@@ -348,20 +408,29 @@ class StartServer extends Command
      */
     protected function buildServer()
     {
+        \Log::channel('websocket')->debug('Creating ServerFactory...', [
+            'host' => $this->option('host'),
+            'port' => $this->option('port'),
+        ]);
+
         $this->server = new ServerFactory(
             $this->option('host'),
             $this->option('port')
         );
 
         if ($loop = $this->option('loop')) {
+            \Log::channel('websocket')->debug('Using injected loop');
             $this->loop = $loop;
         }
 
+        \Log::channel('websocket')->debug('Configuring server with loop and routes...');
         $this->server = $this->server
             ->setLoop($this->loop)
             ->withRoutes(WebSocketRouter::getRoutes())
             ->setConsoleOutput($this->output)
             ->createServer();
+
+        \Log::channel('websocket')->debug('Server created and ready');
     }
 
     /**
@@ -390,6 +459,11 @@ class StartServer extends Command
     {
         // Check restart signal's soft flag first, then fall back to command option
         $useSoftShutdown = $fromRestart ? $this->restartSoftShutdown : $this->option('soft');
+
+        \Log::channel('websocket')->debug('Triggering shutdown', [
+            'from_restart' => $fromRestart,
+            'use_soft_shutdown' => $useSoftShutdown,
+        ]);
 
         if ($useSoftShutdown) {
             $this->triggerSoftShutdown();
@@ -426,12 +500,15 @@ class StartServer extends Command
         $channelManager = $this->laravel->make(ChannelManager::class);
 
         // Close the new connections allowance on this server.
+        \Log::channel('websocket')->debug('Declining new connections...');
         $channelManager->declineNewConnections();
 
         // Get all local connections and close them. They will
         // be automatically be unsubscribed from all channels.
+        \Log::channel('websocket')->debug('Getting local connections to close...');
         $channelManager->getLocalConnections()
             ->then(function ($connections) {
+                \Log::channel('websocket')->debug('Closing connections...', ['count' => count($connections)]);
                 return all(collect($connections)->map(function ($connection) {
                     return app('websockets.handler')
                         ->onClose($connection)
@@ -441,6 +518,7 @@ class StartServer extends Command
                 })->toArray());
             })
             ->then(function () {
+                \Log::channel('websocket')->debug('All connections closed, stopping loop...');
                 $this->loop->stop();
             });
     }

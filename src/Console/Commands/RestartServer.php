@@ -33,21 +33,35 @@ class RestartServer extends Command
      */
     public function handle()
     {
+        \Log::channel('websocket')->debug('websockets:restart command started', [
+            'cache_driver' => $this->option('cache-driver'),
+            'soft' => $this->option('soft'),
+        ]);
+
         \Log::channel('websocket')->info('WebSocket restart server command called ...');
 
         config(['cache.default' => $this->option('cache-driver', 'file')]);
+        \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $this->option('cache-driver', 'file')]);
+
+        $restartData = [
+            'time' => $this->currentTime(),
+            'soft' => $this->option('soft'),
+        ];
+
+        \Log::channel('websocket')->debug('Storing restart signal in cache', $restartData);
 
         Cache::forever(
             'blax:websockets:restart',
-            [
-                'time' => $this->currentTime(),
-                'soft' => $this->option('soft'),
-            ]
+            $restartData
         );
+
+        \Log::channel('websocket')->debug('Restart signal stored successfully');
 
         $shutdownType = $this->option('soft') ? 'soft' : 'hard';
         $this->info(
             "Broadcasted the {$shutdownType} restart signal to the WebSocket server!"
         );
+
+        \Log::channel('websocket')->info('Restart signal broadcasted', ['shutdown_type' => $shutdownType]);
     }
 }
