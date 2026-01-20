@@ -16,7 +16,8 @@ class RestartServer extends Command
      * @var string
      */
     protected $signature = 'websockets:restart
-        {--cache-driver=file : The cache driver to use for the server. Redis will not work due to concurrency issues.}';
+        {--cache-driver=file : The cache driver to use for the server. Redis will not work due to concurrency issues.}
+        {--soft : Use soft shutdown (gracefully close connections) instead of hard shutdown.}';
 
     /**
      * The console command description.
@@ -38,11 +39,15 @@ class RestartServer extends Command
 
         Cache::forever(
             'blax:websockets:restart',
-            $this->currentTime()
+            [
+                'time' => $this->currentTime(),
+                'soft' => $this->option('soft'),
+            ]
         );
 
+        $shutdownType = $this->option('soft') ? 'soft' : 'hard';
         $this->info(
-            'Broadcasted the restart signal to the WebSocket server!'
+            "Broadcasted the {$shutdownType} restart signal to the WebSocket server!"
         );
     }
 }

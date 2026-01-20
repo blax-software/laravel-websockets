@@ -33,6 +33,7 @@ class StartServer extends Command
         {--statistics-interval= : The amount of seconds to tick between statistics saving.}
         {--debug : Forces the loggers to be enabled and thereby overriding the APP_DEBUG setting.}
         {--loop : Programatically inject the loop.}
+        {--soft : Use soft shutdown (gracefully close connections) instead of hard shutdown.}
     ';
 
     /**
@@ -55,6 +56,20 @@ class StartServer extends Command
      * @var \Ratchet\Server\IoServer
      */
     public $server;
+
+    /**
+     * The last restart timestamp.
+     *
+     * @var int|null
+     */
+    protected $lastRestart = null;
+
+    /**
+     * Whether the last restart signal requested soft shutdown.
+     *
+     * @var bool
+     */
+    protected $restartSoftShutdown = false;
 
     /**
      * Initialize the command.
@@ -182,18 +197,27 @@ class StartServer extends Command
      */
     public function configureRestartTimer()
     {
-        $this->lastRestart = $this->getLastRestart();
+        $restartData = $this->getLastRestartData();
+        $this->lastRestart = $restartData['time'] ?? null;
 
         $this->loop->addPeriodicTimer(10, function () {
-            if (
-                ($this->getLastRestart() . '')
-                !== ($this->lastRestart . '')
-            ) {
-                \Log::channel('websocket')->info('Restart detected, triggering soft shutdown...', [
+            $restartData = $this->getLastRestartData();
+            $currentRestart = $restartData['time'] ?? null;
+
+            // Only trigger restart if lastRestart was set and a new restart signal was received
+            if ($this->lastRestart !== null && $currentRestart !== null && $currentRestart !== $this->lastRestart) {
+                $this->restartSoftShutdown = $restartData['soft'] ?? false;
+
+                \Log::channel('websocket')->info('Restart detected, triggering shutdown...', [
                     'previous_restart' => $this->lastRestart,
-                    'current_restart' => $this->getLastRestart(),
+                    'current_restart' => $currentRestart,
+                    'soft' => $this->restartSoftShutdown,
                 ]);
-                $this->triggerSoftShutdown();
+
+                // Update lastRestart to prevent multiple triggers
+                $this->lastRestart = $currentRestart;
+
+                $this->triggerShutdown(true);
             }
         });
     }
@@ -225,17 +249,17 @@ class StartServer extends Command
         }
 
         $this->loop->addSignal(SIGTERM, function () {
-            \Log::channel('websocket')->info('Received SIGTERM, closing existing connections...');
-            $this->line('Closing existing connections...');
+            \Log::channel('websocket')->info('Received SIGTERM, shutting down...');
+            $this->line('Shutting down server...');
 
-            $this->triggerSoftShutdown();
+            $this->triggerShutdown();
         });
 
         $this->loop->addSignal(SIGINT, function () {
-            \Log::channel('websocket')->info('Received SIGINT, closing existing connections...');
-            $this->line('Closing existing connections...');
+            \Log::channel('websocket')->info('Received SIGINT, shutting down...');
+            $this->line('Shutting down server...');
 
-            $this->triggerSoftShutdown();
+            $this->triggerShutdown();
         });
     }
 
@@ -341,26 +365,64 @@ class StartServer extends Command
     }
 
     /**
-     * Get the last time the server restarted.
+     * Get the last restart data from cache.
      *
-     * @return int
+     * @return array
      */
-    protected function getLastRestart()
+    protected function getLastRestartData()
     {
-        return Cache::get(
-            'blax:websockets:restart',
-            0
-        );
+        $data = Cache::get('blax:websockets:restart');
+
+        // Handle legacy format (just timestamp) for backwards compatibility
+        if (is_numeric($data)) {
+            return ['time' => $data, 'soft' => false];
+        }
+
+        return $data ?? ['time' => null, 'soft' => false];
+    }
+
+    /**
+     * Trigger shutdown based on the --soft option or restart signal.
+     *
+     * @return void
+     */
+    protected function triggerShutdown(bool $fromRestart = false)
+    {
+        // Check restart signal's soft flag first, then fall back to command option
+        $useSoftShutdown = $fromRestart ? $this->restartSoftShutdown : $this->option('soft');
+
+        if ($useSoftShutdown) {
+            $this->triggerSoftShutdown();
+        } else {
+            $this->triggerHardShutdown();
+        }
+    }
+
+    /**
+     * Trigger a hard shutdown for the process.
+     * Immediately stops the loop without gracefully closing connections.
+     *
+     * @return void
+     */
+    protected function triggerHardShutdown()
+    {
+        \Log::channel('websocket')->info('Triggering hard shutdown...');
+        $this->line('Hard shutdown initiated, stopping server immediately...');
+
+        $this->loop->stop();
     }
 
     /**
      * Trigger a soft shutdown for the process.
+     * Gracefully closes all connections before stopping.
      *
      * @return void
      */
     protected function triggerSoftShutdown()
     {
         \Log::channel('websocket')->info('Triggering soft shutdown...');
+        $this->line('Soft shutdown initiated, closing existing connections gracefully...');
+
         $channelManager = $this->laravel->make(ChannelManager::class);
 
         // Close the new connections allowance on this server.
