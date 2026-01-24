@@ -70,17 +70,11 @@ class Controller
         }
 
         try {
-            $contr = (strpos($event[0], '-') >= 0)
-                ? implode('', array_map(fn($item) => ucfirst($item), explode('-', $event[0])))
-                : ucfirst($event[0]);
-
-            $vendorcontroller = '\\BlaxSoftware\\LaravelWebSockets\\Websocket\\Controllers\\' . $contr . 'Controller';
-            $appcontroller = '\\App\\Websocket\\Controllers\\' . $contr . 'Controller';
+            $eventPrefix = $event[0];
             $method = static::without_uniquifyer($event[1]);
 
-            $controllerClass = class_exists($appcontroller)
-                ? $appcontroller
-                : (class_exists($vendorcontroller) ? $vendorcontroller : null);
+            // Use cached controller resolver for fast lookup
+            $controllerClass = ControllerResolver::resolve($eventPrefix);
 
             if (! $controllerClass) {
                 return self::send_error($connection, $message, 'Event could not be associated');
