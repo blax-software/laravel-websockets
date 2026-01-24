@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace BlaxSoftware\LaravelWebSockets\Websocket;
 
+use BlaxSoftware\LaravelWebSockets\Cache\IpcCache;
 use React\Socket\Connection;
 use Illuminate\Support\Facades\Log;
 
@@ -17,8 +18,22 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
     public $ip;
     public $app;
 
-    public function __construct($original_connection)
+    /**
+     * Unique request ID for cache-based communication
+     * Used instead of PID to avoid race conditions from PID reuse
+     */
+    protected string $requestId;
+
+    /**
+     * Track current iteration for multi-response scenarios
+     */
+    protected int $currentIteration = 0;
+
+    public function __construct($original_connection, ?string $requestId = null)
     {
+        // Generate fallback requestId if not provided (for backward compatibility)
+        $this->requestId = $requestId ?? uniqid('req_', true) . '_' . bin2hex(random_bytes(4));
+
         // create an indisdinctable copy of the original connection
         foreach (get_object_vars($original_connection) as $key => $value) {
             $this->{$key} = $value;
@@ -52,8 +67,11 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
 
     public function send($data)
     {
-        if(cache()->get('dedicated_data_'.getmypid().'_complete')){
-            Log::error('[MockConnection] Send for pid: ' . getmypid() . ' which is already completed and does not check for new data', [
+        $key = $this->getDataKey();
+        $completeKey = $key . '_complete';
+
+        if (IpcCache::get($completeKey)) {
+            Log::error('[MockConnection] Send for request: ' . $this->requestId . ' which is already completed and does not check for new data', [
                 'data' => $data,
             ]);
             return $this;
@@ -64,14 +82,16 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
             throw new \InvalidArgumentException('Data must be a string or an object that can be converted to a string.');
         }
 
-        Log::channel('websocket')->info('[MockConnection] Send for pid: ' . getmypid(), [
+        Log::channel('websocket')->info('[MockConnection] Send for request: ' . $this->requestId . ' iteration: ' . $this->currentIteration, [
             'data' => $data,
         ]);
 
-        $key = static::getDataKey();
+        // Use atomic set to avoid race conditions - IpcCache uses tmpfs for speed
+        IpcCache::put($key, $data, 60);
+        IpcCache::put($key . '_done', true, 60);
 
-        cache()->put($key, $data, 60);
-        cache()->put($key . '_done', true, 60);
+        // Increment iteration for next send call
+        $this->currentIteration++;
 
         return $this;
     }
@@ -80,7 +100,7 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
         $data,
         ?string $channel = null,
         bool $including_self = false,
-    ){
+    ) {
         $data ??= [];
         $data['broadcast'] = true;
         $data['channel'] ??= $channel;
@@ -102,26 +122,18 @@ class MockConnection extends Connection implements \Ratchet\ConnectionInterface
         return $this->send(json_encode($data));
     }
 
-    private static function getDataKey()
+    /**
+     * Get the data key for the current request and iteration
+     * Now uses the unique requestId instead of PID to avoid race conditions
+     */
+    private function getDataKey(): string
     {
-        $key = 'dedicated_data_' . getmypid();
-        $i = '';
+        $baseKey = 'dedicated_data_' . $this->requestId;
 
-        while (cache()->has($key . ($i !== '' ? '_' . $i : ''))) {
-            if ($i === '') {
-                $i = 0;
-            } else {
-                $i = (int) $i;
-                $i++;
-            }
+        if ($this->currentIteration > 0) {
+            return $baseKey . '_' . $this->currentIteration;
         }
 
-        if ($i !== '') {
-            $i = '_' . $i;
-        }
-
-        $key .= $i;
-
-        return $key;
+        return $baseKey;
     }
 }

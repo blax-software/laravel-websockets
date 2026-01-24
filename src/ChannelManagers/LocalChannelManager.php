@@ -424,17 +424,23 @@ class LocalChannelManager implements ChannelManager
 
     /**
      * Keep tracking the connections availability when they pong.
+     * Optimized: Uses unix timestamp directly instead of Carbon for performance.
      *
      * @param  \Ratchet\ConnectionInterface  $connection
      * @return PromiseInterface[bool]
      */
     public function connectionPonged(ConnectionInterface $connection): PromiseInterface
     {
-        return $this->pongConnectionInChannels($connection);
+        // Direct timestamp update on connection object - no channel iteration needed
+        // The connection object is passed by reference, so this updates it everywhere
+        $connection->lastPongedAt = time();
+
+        return Helpers::createFulfilledPromise(true);
     }
 
     /**
      * Remove the obsolete connections that didn't ponged in a while.
+     * Optimized: Uses unix timestamp comparison instead of Carbon.
      *
      * @return PromiseInterface[bool]
      */
@@ -444,9 +450,16 @@ class LocalChannelManager implements ChannelManager
             return $this->getLocalConnections()
                 ->then(function ($connections) {
                     $promises = [];
+                    $now = time();
 
                     foreach ($connections as $connection) {
-                        $differenceInSeconds = $connection->lastPongedAt->diffInSeconds(Carbon::now());
+                        // Handle both Carbon objects (legacy) and unix timestamps (optimized)
+                        $lastPong = $connection->lastPongedAt ?? 0;
+                        if (is_object($lastPong)) {
+                            $differenceInSeconds = $lastPong->diffInSeconds(Carbon::now());
+                        } else {
+                            $differenceInSeconds = $now - (int) $lastPong;
+                        }
 
                         if ($differenceInSeconds > 120) {
                             $promises[] = $this->unsubscribeFromAllChannels($connection);
@@ -462,23 +475,17 @@ class LocalChannelManager implements ChannelManager
 
     /**
      * Pong connection in channels.
+     * Optimized: No longer iterates through channels - timestamp is on connection object.
      *
      * @param  ConnectionInterface  $connection
      * @return PromiseInterface[bool]
      */
     public function pongConnectionInChannels(ConnectionInterface $connection): PromiseInterface
     {
-        return $this->getLocalChannels($connection->app->id)
-            ->then(function ($channels) use ($connection) {
-                foreach ($channels as $channel) {
-                    if ($conn = $channel->getConnection($connection->socketId)) {
-                        $conn->lastPongedAt = Carbon::now();
-                        $channel->saveConnection($conn);
-                    }
-                }
+        // Simply update timestamp on the connection object directly
+        $connection->lastPongedAt = time();
 
-                return true;
-            });
+        return Helpers::createFulfilledPromise(true);
     }
 
     /**
@@ -526,21 +533,23 @@ class LocalChannelManager implements ChannelManager
 
     /**
      * Get the channel class by the channel name.
+     * Optimized: Direct string comparison instead of Str::startsWith
      *
      * @param  string  $channelName
      * @return string
      */
     protected function getChannelClassName(string $channelName): string
     {
-        if (Str::startsWith($channelName, 'private-')) {
+        // Direct strncmp is faster than Str::startsWith for fixed prefixes
+        if (strncmp($channelName, 'private-', 8) === 0) {
             return PrivateChannel::class;
         }
 
-        if (Str::startsWith($channelName, 'presence-')) {
+        if (strncmp($channelName, 'presence-', 9) === 0) {
             return PresenceChannel::class;
         }
 
-        if (Str::startsWith($channelName, 'openpresence-')) {
+        if (strncmp($channelName, 'openpresence-', 13) === 0) {
             return OpenPresenceChannel::class;
         }
 

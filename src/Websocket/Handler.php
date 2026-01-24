@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace BlaxSoftware\LaravelWebSockets\Websocket;
 
 use BlaxSoftware\LaravelWebSockets\Apps\App;
+use BlaxSoftware\LaravelWebSockets\Cache\IpcCache;
 use BlaxSoftware\LaravelWebSockets\Channels\Channel;
 use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
@@ -32,29 +33,190 @@ class Handler implements MessageComponentInterface
      * Track channel connections using associative arrays for O(1) lookup
      * Structure: [channel_name => [socket_id => true]]
      */
-    protected $channel_connections = [];
+    protected array $channel_connections = [];
 
     /**
      * Cache write buffer for batching operations
      * Reduces file I/O when multiple rapid requests occur
      */
-    protected $cacheWriteBuffer = [];
-    protected $cacheDeleteBuffer = [];
-    protected $cacheBufferScheduled = false;
+    protected array $cacheWriteBuffer = [];
+    protected array $cacheDeleteBuffer = [];
+    protected bool $cacheBufferScheduled = false;
+
+    /**
+     * Pre-encoded static JSON responses for performance
+     * Encoding once at startup is faster than encoding every time
+     */
+    private static string $PONG_RESPONSE = '{"event":"pusher.pong"}';
+
+    /**
+     * GC collection counter - only collect every N pings
+     */
+    private int $gcCounter = 0;
+    private const GC_INTERVAL = 100;
 
     /**
      * Initialize a new handler.
-     *
-     * @return void
      */
     public function __construct(
         protected ChannelManager $channelManager
     ) {}
 
-    public function onOpen(ConnectionInterface $connection)
+    /**
+     * Handle incoming WebSocket message with optimized fast path for ping/pong
+     */
+    public function onMessage(
+        ConnectionInterface $connection,
+        MessageInterface $message
+    ): void {
+        if (!isset($connection->app)) {
+            return;
+        }
+
+        // FAST PATH: Check for ping before any heavy processing
+        // Use raw string comparison on payload to avoid JSON decode overhead
+        $payload = $message->getPayload();
+
+        // Quick ping detection using strpos (faster than json_decode + array access)
+        if ($this->tryHandlePingFast($payload, $connection)) {
+            return;
+        }
+
+        // SLOW PATH: Full message processing
+        try {
+            $this->processFullMessage($connection, $message, $payload);
+        } catch (\Throwable $e) {
+            $this->handleMessageError($e);
+        }
+    }
+
+    /**
+     * Fast path for ping/pong - avoids JSON decode, object creation, promises
+     * Target: < 1ms processing time
+     */
+    private function tryHandlePingFast(string $payload, ConnectionInterface $connection): bool
     {
-        if (! $this->connectionCanBeMade($connection)) {
-            return $connection->close();
+        // Quick string check - if doesn't contain "ping", skip fast path
+        // strpos is O(n) but very fast for short strings
+        if (strpos($payload, 'ping') === false) {
+            return false;
+        }
+
+        // Now do minimal JSON decode to confirm it's a ping
+        $data = json_decode($payload, true);
+        if ($data === null) {
+            return false;
+        }
+
+        $event = $data['event'] ?? '';
+
+        // Direct string comparison (faster than strtolower + comparison)
+        if ($event !== 'pusher:ping' && $event !== 'pusher.ping') {
+            return false;
+        }
+
+        // Update connection timestamp directly on connection object (no promise chain)
+        $connection->lastPongedAt = time();
+
+        // Send pre-encoded pong response immediately
+        $connection->send(self::$PONG_RESPONSE);
+
+        // Periodic GC instead of every ping
+        if (++$this->gcCounter >= self::GC_INTERVAL) {
+            $this->gcCounter = 0;
+            gc_collect_cycles();
+        }
+
+        return true;
+    }
+
+    /**
+     * Full message processing for non-ping messages
+     */
+    private function processFullMessage(
+        ConnectionInterface $connection,
+        MessageInterface $message,
+        string $payload
+    ): void {
+        // Set remote address once (moved from per-message to reduce overhead)
+        if (isset($connection->remoteAddress)) {
+            request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
+        }
+
+        // Decode message (we already have payload string)
+        $messageArray = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+
+        // Handle pusher protocol messages (subscribe, unsubscribe, etc.)
+        $this->handlePusherProtocolMessage($message, $connection, $messageArray);
+
+        $channel = $this->handleChannelSubscriptions($messageArray, $connection);
+
+        if ($this->shouldRejectMessage($channel, $connection, $messageArray)) {
+            return;
+        }
+
+        $this->authenticateConnection($connection, $channel, $messageArray);
+
+        // Only log in debug mode to reduce I/O
+        if (config('app.debug')) {
+            Log::channel('websocket')->debug('[' . $connection->socketId . ']@' . $channel->getName() . ' | ' . $payload);
+        }
+
+        if ($this->handlePusherEvent($messageArray, $connection)) {
+            return;
+        }
+
+        $this->forkAndProcessMessage($connection, $channel, $messageArray);
+    }
+
+    /**
+     * Handle pusher protocol messages (formerly in PusherMessageFactory)
+     * Inlined for performance - avoids object creation
+     */
+    private function handlePusherProtocolMessage(
+        MessageInterface $message,
+        ConnectionInterface $connection,
+        array $messageArray
+    ): void {
+        $event = $messageArray['event'] ?? '';
+
+        // Fast check - most messages don't start with 'pusher' or 'client-'
+        $firstChar = $event[0] ?? '';
+        if ($firstChar !== 'p' && $firstChar !== 'c') {
+            return;
+        }
+
+        // Check for client- messages
+        if (strpos($event, 'client-') === 0) {
+            if (!$connection->app->clientMessagesEnabled) {
+                return;
+            }
+
+            $channelName = $messageArray['channel'] ?? null;
+            if (!$channelName) {
+                return;
+            }
+
+            $channel = $this->channelManager->find($connection->app->id, $channelName);
+            if ($channel) {
+                $channel->broadcastToEveryoneExcept(
+                    (object) $messageArray,
+                    $connection->socketId,
+                    $connection->app->id
+                );
+            }
+            return;
+        }
+
+        // Check for pusher: or pusher. messages (subscribe/unsubscribe handled elsewhere)
+        // This is handled by handleChannelSubscriptions for subscribe/unsubscribe
+    }
+
+    public function onOpen(ConnectionInterface $connection): void
+    {
+        if (!$this->connectionCanBeMade($connection)) {
+            $connection->close();
+            return;
         }
 
         try {
@@ -71,48 +233,6 @@ class Handler implements MessageComponentInterface
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
-        }
-    }
-
-    public function onMessage(
-        ConnectionInterface $connection,
-        MessageInterface $message
-    ) {
-        if (!isset($connection->app)) {
-            return;
-        }
-
-        try {
-            request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
-
-            PusherMessageFactory::createForMessage(
-                $message,
-                $connection,
-                $this->channelManager
-            )->respond();
-
-            $message = json_decode($message->getPayload(), true, 512, JSON_THROW_ON_ERROR);
-
-            if ($this->handlePingPong($message, $connection)) {
-                return;
-            }
-
-            $channel = $this->handleChannelSubscriptions($message, $connection);
-
-            if ($this->shouldRejectMessage($channel, $connection, $message)) {
-                return;
-            }
-
-            $this->authenticateConnection($connection, $channel, $message);
-            \Log::channel('websocket')->info('[' . $connection->socketId . ']@' . $channel->getName() . ' | ' . json_encode($message));
-
-            if ($this->handlePusherEvent($message, $connection)) {
-                return;
-            }
-
-            $this->forkAndProcessMessage($connection, $channel, $message);
-        } catch (\Throwable $e) {
-            $this->handleMessageError($e);
         }
     }
 
@@ -150,8 +270,10 @@ class Handler implements MessageComponentInterface
             return;
         }
 
+        // Initialize lastPongedAt with unix timestamp (faster than Carbon)
+        $connection->lastPongedAt = time();
+
         $this->channelManager->subscribeToApp($connection->app->id);
-        $this->channelManager->connectionPonged($connection);
 
         NewConnection::dispatch(
             $connection->app->id,
@@ -159,25 +281,14 @@ class Handler implements MessageComponentInterface
         );
     }
 
-    protected function handlePingPong(array $message, ConnectionInterface $connection): bool
-    {
-        $eventLower = strtolower($message['event']);
-        if ($eventLower !== 'pusher:ping' && $eventLower !== 'pusher.ping') {
-            return false;
-        }
-
-        $this->channelManager->connectionPonged($connection);
-        gc_collect_cycles();
-        return true;
-    }
-
     protected function shouldRejectMessage(?Channel $channel, ConnectionInterface $connection, array $message): bool
     {
-        $isUnsubscribe = $message['event'] === 'pusher:unsubscribe' || $message['event'] === 'pusher.unsubscribe';
+        $event = $message['event'] ?? '';
+        $isUnsubscribe = $event === 'pusher:unsubscribe' || $event === 'pusher.unsubscribe';
 
         if (!$channel?->hasConnection($connection) && !$isUnsubscribe) {
             $connection->send(json_encode([
-                'event' => $message['event'] . ':error',
+                'event' => $event . ':error',
                 'data' => [
                     'message' => 'Subscription not established',
                     'meta' => $message,
@@ -220,6 +331,10 @@ class Handler implements MessageComponentInterface
         Channel $channel,
         array $message
     ): void {
+        // Generate unique request ID BEFORE forking to avoid race conditions
+        // Using uniqid with more_entropy + random_bytes for guaranteed uniqueness
+        $requestId = uniqid('req_', true) . '_' . bin2hex(random_bytes(4));
+
         $pid = pcntl_fork();
 
         if ($pid === -1) {
@@ -228,24 +343,25 @@ class Handler implements MessageComponentInterface
         }
 
         if ($pid === 0) {
-            $this->processMessageInChild($connection, $channel, $message);
+            $this->processMessageInChild($connection, $channel, $message, $requestId);
             exit(0);
         }
 
-        $this->addDataCheckLoop($connection, $message, $pid);
+        $this->addDataCheckLoop($connection, $message, $requestId);
     }
 
     protected function processMessageInChild(
         ConnectionInterface $connection,
         Channel $channel,
-        array $message
+        array $message,
+        string $requestId
     ): void {
         try {
             DB::disconnect();
             DB::reconnect();
 
             $this->setRequest($message, $connection);
-            $mock = new MockConnection($connection);
+            $mock = new MockConnection($connection, $requestId);
 
             Controller::controll_message(
                 $mock,
@@ -737,27 +853,29 @@ class Handler implements MessageComponentInterface
     private function addDataCheckLoop(
         $connection,
         $message,
-        $pid,
+        string $requestId,
         $optional = false,
-        $iteration = false
+        int $iteration = 0
     ) {
-        $pid = $this->preparePid($pid, $iteration);
-        $pidcache_start = 'dedicated_start_' . $pid;
-        cache()->put($pidcache_start, microtime(true), 100);
+        $iterationKey = $requestId . ($iteration > 0 ? '_' . $iteration : '');
+        $cacheKeyStart = 'dedicated_start_' . $iterationKey;
+        IpcCache::put($cacheKeyStart, microtime(true), 100);
 
         $this->channelManager->loop->addPeriodicTimer(0.01, function ($timer) use (
-            $pidcache_start,
+            $cacheKeyStart,
+            $iterationKey,
             $message,
-            $pid,
+            $requestId,
             $connection,
             $optional,
             $iteration
         ) {
             $this->checkDataLoopIteration(
                 $timer,
-                $pidcache_start,
+                $cacheKeyStart,
                 $message,
-                $pid,
+                $iterationKey,
+                $requestId,
                 $connection,
                 $optional,
                 $iteration
@@ -767,56 +885,66 @@ class Handler implements MessageComponentInterface
         });
     }
 
-    protected function preparePid($pid, $iteration): string
-    {
-        $pid = explode('_', $pid . '')[0];
-
-        if ($iteration >= 0 && $iteration !== false) {
-            $pid .= '_' . $iteration;
-        }
-
-        return $pid;
-    }
-
     protected function checkDataLoopIteration(
         $timer,
-        string $pidcache_start,
+        string $cacheKeyStart,
         array $message,
-        string $pid,
+        string $iterationKey,
+        string $requestId,
         $connection,
         bool $optional,
-        $iteration
+        int $iteration
     ): void {
-        $pidcache_data = 'dedicated_data_' . $pid;
-        $pidcache_done = 'dedicated_data_' . $pid . '_done';
-        $pidcache_complete = 'dedicated_data_' . $pid . '_complete';
+        $cacheKeyData = 'dedicated_data_' . $iterationKey;
+        $cacheKeyDone = 'dedicated_data_' . $iterationKey . '_done';
+        $cacheKeyComplete = 'dedicated_data_' . $iterationKey . '_complete';
 
-        if ($this->handleTimeout($timer, $pidcache_start, $pidcache_complete, $message, $connection, $optional)) {
+        if ($this->handleTimeout($timer, $cacheKeyStart, $cacheKeyComplete, $message, $connection, $optional)) {
             return;
         }
 
-        if (!cache()->has($pidcache_done)) {
+        if (!IpcCache::has($cacheKeyDone)) {
             return;
         }
 
-        $this->scheduleNextIteration($connection, $message, $pid, $iteration);
-        $this->processAndSendData($connection, $pidcache_data);
+        // Clean up cache entries for this iteration before processing
+        // This prevents memory leaks and stale data issues
+        $this->cleanupIterationCache($iterationKey);
+
+        $this->scheduleNextIteration($connection, $message, $requestId, $iteration);
+        $this->processAndSendData($connection, $cacheKeyData);
         $this->channelManager->loop->cancelTimer($timer);
+    }
+
+    /**
+     * Clean up cache entries for a completed iteration
+     */
+    protected function cleanupIterationCache(string $iterationKey): void
+    {
+        $keysToDelete = [
+            'dedicated_start_' . $iterationKey,
+            'dedicated_data_' . $iterationKey . '_done',
+            // Note: We don't delete 'dedicated_data_' here as we need it for processAndSendData
+            // It will expire naturally after 60 seconds
+        ];
+
+        IpcCache::forgetMultiple($keysToDelete);
     }
 
     protected function handleTimeout(
         $timer,
-        string $pidcache_start,
-        string $pidcache_complete,
+        string $cacheKeyStart,
+        string $cacheKeyComplete,
         array $message,
         $connection,
         bool $optional
     ): bool {
-        if (!cache()->has($pidcache_start)) {
+        $startTime = IpcCache::get($cacheKeyStart);
+        if ($startTime === null) {
             return false;
         }
 
-        $diff = microtime(true) - ((int) cache()->get($pidcache_start));
+        $diff = microtime(true) - ((float) $startTime);
         if ($diff <= 60) {
             return false;
         }
@@ -832,19 +960,27 @@ class Handler implements MessageComponentInterface
         }
 
         $this->channelManager->loop->cancelTimer($timer);
-        cache()->put($pidcache_complete, true, 360);
+        IpcCache::put($cacheKeyComplete, true, 360);
         return true;
     }
 
-    protected function scheduleNextIteration($connection, array $message, string $pid, $iteration): void
+    protected function scheduleNextIteration($connection, array $message, string $requestId, int $iteration): void
     {
-        $nextIteration = ($iteration === false) ? 0 : $iteration + 1;
-        $this->addDataCheckLoop($connection, $message, $pid, true, $nextIteration);
+        $nextIteration = $iteration + 1;
+        $this->addDataCheckLoop($connection, $message, $requestId, true, $nextIteration);
     }
 
-    protected function processAndSendData($connection, string $pidcache_data): void
+    protected function processAndSendData($connection, string $cacheKeyData): void
     {
-        $sending = cache()->get($pidcache_data);
+        $sending = IpcCache::get($cacheKeyData);
+
+        // Clean up the data cache key immediately after reading
+        IpcCache::forget($cacheKeyData);
+
+        if (!$sending) {
+            return;
+        }
+
         $bm = json_decode($sending, true);
 
         if (isset($bm['broadcast']) && $bm['broadcast']) {
