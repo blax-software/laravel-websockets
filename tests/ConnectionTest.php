@@ -6,16 +6,26 @@ use BlaxSoftware\LaravelWebSockets\Server\Exceptions\UnknownAppKey;
 
 class ConnectionTest extends TestCase
 {
+    /**
+     * @group integration
+     * @group requires-server
+     */
     public function test_cannot_connect_with_a_wrong_app_key()
     {
+        $this->skipIfServerUnavailable();
         $this->startServer();
 
         $response = $this->await($this->joinWebSocketServer(['public-channel'], 'NonWorkingKey'));
         $this->assertSame('{"event":"pusher.error","data":{"message":"Could not find app key `NonWorkingKey`.","code":4001}}', (string) $response);
     }
 
+    /**
+     * @group integration
+     * @group requires-server
+     */
     public function test_unconnected_app_cannot_store_statistics()
     {
+        $this->skipIfServerUnavailable();
         $this->startServer();
 
         $response = $this->await($this->joinWebSocketServer(['public-channel'], 'NonWorkingKey'));
@@ -25,16 +35,26 @@ class ConnectionTest extends TestCase
         $this->assertCount(0, $count);
     }
 
+    /**
+     * @group integration
+     * @group requires-server
+     */
     public function test_origin_validation_should_fail_for_no_origin()
     {
+        $this->skipIfServerUnavailable();
         $this->startServer();
 
         $response = $this->await($this->joinWebSocketServer(['public-channel'], 'TestOrigin'));
         $this->assertSame('{"event":"pusher.error","data":{"message":"The origin is not allowed for `TestOrigin`.","code":4009}}', (string) $response);
     }
 
+    /**
+     * @group integration
+     * @group requires-server
+     */
     public function test_origin_validation_should_fail_for_wrong_origin()
     {
+        $this->skipIfServerUnavailable();
         $this->startServer();
 
         $response = $this->await($this->joinWebSocketServer(['public-channel'], 'TestOrigin', ['Origin' => 'https://google.ro']));

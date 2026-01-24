@@ -30,10 +30,17 @@ class MysqlAppManagerTest extends TestCase
     {
         parent::setUp();
 
+        // Skip if MySQL is not available
+        try {
+            \DB::connection('mysql')->getPdo();
+        } catch (\Exception $e) {
+            $this->markTestSkipped('MySQL connection is not available: ' . $e->getMessage());
+        }
+
         $this->artisan('migrate:fresh', [
             '--database' => 'mysql',
             '--realpath' => true,
-            '--path' => __DIR__.'/../../database/migrations/',
+            '--path' => __DIR__ . '/../../database/migrations/',
         ]);
 
         $this->apps = app()->make(AppManager::class);

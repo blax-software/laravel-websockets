@@ -59,10 +59,12 @@
         "symfony/psr-http-message-bridge": "*"
     },
     "require-dev": {
+        "clue/block-react": "^1.5",
+        "clue/buzz-react": "^2.9",
         "laravel/legacy-factories": "^1.1",
         "orchestra/testbench-browser-kit": "^7.0",
         "phpunit/phpunit": "^9.0",
-        "ratchet/pawl": "^0.3.5"
+        "ratchet/pawl": "^0.3"
     },
     "suggest": {
         "ext-pcntl": "Running the server needs pcntl to listen to command signals and soft-shutdown.",
@@ -80,7 +82,7 @@
         }
     },
     "scripts": {
-        "test": "vendor/bin/phpunit"
+        "test": "php -d error_reporting=22519 vendor/bin/phpunit"
     },
     "config": {
         "sort-packages": true

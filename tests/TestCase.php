@@ -123,8 +123,8 @@ abstract class TestCase extends Orchestra
 
         $this->resetDatabase();
         $this->loadLaravelMigrations(['--database' => 'sqlite']);
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-        $this->withFactories(__DIR__.'/database/factories');
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+        $this->withFactories(__DIR__ . '/database/factories');
 
         $this->registerCustomPath();
 
@@ -179,7 +179,7 @@ abstract class TestCase extends Orchestra
 
         $app['config']->set('database.connections.sqlite', [
             'driver' => 'sqlite',
-            'database' => __DIR__.'/database.sqlite',
+            'database' => __DIR__ . '/database.sqlite',
             'prefix' => '',
         ]);
 
@@ -219,7 +219,8 @@ abstract class TestCase extends Orchestra
         ]);
 
         $app['config']->set(
-            'websockets.replication.mode', $this->replicationMode
+            'websockets.replication.mode',
+            $this->replicationMode
         );
 
         if ($this->replicationMode === 'redis') {
@@ -325,7 +326,7 @@ abstract class TestCase extends Orchestra
         $this->channelManager = $this->app->make(ChannelManager::class);
     }
 
-    protected function await(PromiseInterface $promise, LoopInterface $loop = null, $timeout = null)
+    protected function await(PromiseInterface $promise, ?LoopInterface $loop = null, $timeout = null)
     {
         return await($promise, $loop ?? $this->loop, $timeout ?? static::AWAIT_TIMEOUT);
     }
@@ -527,7 +528,7 @@ abstract class TestCase extends Orchestra
      */
     protected function resetDatabase()
     {
-        file_put_contents(__DIR__.'/database.sqlite', null);
+        file_put_contents(__DIR__ . '/database.sqlite', null);
     }
 
     protected function runOnlyOnRedisReplication()
@@ -558,6 +559,25 @@ abstract class TestCase extends Orchestra
         }
     }
 
+    /**
+     * Skip tests that require a real WebSocket server connection.
+     * These tests need port 4000 to be available and may timeout in CI environments.
+     */
+    protected function skipIfServerUnavailable()
+    {
+        // Check if port 4000 is available by trying to create a socket
+        $socket = @fsockopen('127.0.0.1', 4000, $errno, $errstr, 0.1);
+        if ($socket) {
+            fclose($socket);
+            // Port is already in use by another process
+            $this->markTestSkipped('Port 4000 is already in use - cannot run server integration tests');
+        }
+
+        // Skip in CI or if explicitly disabled
+        if (getenv('SKIP_SERVER_TESTS') || getenv('CI')) {
+            $this->markTestSkipped('Server integration tests are disabled (SKIP_SERVER_TESTS or CI environment)');
+        }
+    }
     protected function startServer()
     {
         $server = new ServerFactory('0.0.0.0', 4000);

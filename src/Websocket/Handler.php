@@ -13,6 +13,8 @@ use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
 use BlaxSoftware\LaravelWebSockets\Events\ConnectionClosed;
 use BlaxSoftware\LaravelWebSockets\Events\NewConnection;
 use BlaxSoftware\LaravelWebSockets\Exceptions\WebSocketException;
+use BlaxSoftware\LaravelWebSockets\Ipc\SocketPairIpc;
+use BlaxSoftware\LaravelWebSockets\Websocket\MockConnectionSocketPair;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\ConnectionsOverCapacity;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\OriginNotAllowed;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\UnknownAppKey;
@@ -29,6 +31,12 @@ use Ratchet\WebSocket\MessageComponentInterface;
 
 class Handler implements MessageComponentInterface
 {
+    /**
+     * Whether to use event-driven socket pair IPC (true) or polling (false)
+     * Socket pairs are instant but require sockets extension
+     */
+    private bool $useSocketPairIpc;
+
     /**
      * Track channel connections using associative arrays for O(1) lookup
      * Structure: [channel_name => [socket_id => true]]
@@ -60,7 +68,10 @@ class Handler implements MessageComponentInterface
      */
     public function __construct(
         protected ChannelManager $channelManager
-    ) {}
+    ) {
+        // Use socket pair IPC if available (instant), otherwise fall back to polling
+        $this->useSocketPairIpc = SocketPairIpc::isSupported();
+    }
 
     /**
      * Handle incoming WebSocket message with optimized fast path for ping/pong
@@ -128,6 +139,18 @@ class Handler implements MessageComponentInterface
         }
 
         return true;
+    }
+
+    /**
+     * Debug ping latency - call this to measure server-side processing time
+     * Add to onMessage: $start = hrtime(true); ... $this->logPingLatency($start);
+     */
+    protected function logPingLatency(int $startNs): void
+    {
+        $elapsed = (hrtime(true) - $startNs) / 1_000_000; // Convert to ms
+        if ($elapsed > 1.0) {
+            Log::channel('websocket')->warning('Slow ping: ' . round($elapsed, 2) . 'ms');
+        }
     }
 
     /**
@@ -331,8 +354,144 @@ class Handler implements MessageComponentInterface
         Channel $channel,
         array $message
     ): void {
+        if ($this->useSocketPairIpc) {
+            $this->forkWithSocketPair($connection, $channel, $message);
+        } else {
+            $this->forkWithPolling($connection, $channel, $message);
+        }
+    }
+
+    /**
+     * Fork with event-driven socket pair IPC (no polling!)
+     * Parent is notified INSTANTLY when child sends data
+     */
+    protected function forkWithSocketPair(
+        ConnectionInterface $connection,
+        Channel $channel,
+        array $message
+    ): void {
+        // Create socket pair BEFORE fork
+        $ipc = SocketPairIpc::create($this->channelManager->loop);
+
+        $pid = pcntl_fork();
+
+        if ($pid === -1) {
+            Log::error('Fork error');
+            return;
+        }
+
+        if ($pid === 0) {
+            // === CHILD PROCESS ===
+            $ipc->setupChild();
+
+            try {
+                DB::disconnect();
+                DB::reconnect();
+
+                $this->setRequest($message, $connection);
+
+                // Create mock that sends via socket pair
+                $mock = new MockConnectionSocketPair($connection, $ipc);
+
+                Controller::controll_message(
+                    $mock,
+                    $channel,
+                    $message,
+                    $this->channelManager
+                );
+
+                \Illuminate\Container\Container::getInstance()
+                    ->make(\Illuminate\Support\Defer\DeferredCallbackCollection::class)
+                    ->invokeWhen(fn($callback) => true);
+            } catch (Exception $e) {
+                // Send error via socket pair
+                $ipc->sendToParent(json_encode([
+                    'event' => $message['event'] . ':error',
+                    'data' => ['message' => $e->getMessage()],
+                ]));
+
+                if (app()->bound('sentry')) {
+                    app('sentry')->captureException($e);
+                }
+            }
+
+            $ipc->closeChild();
+            exit(0);
+        }
+
+        // === PARENT PROCESS ===
+        // Setup event-driven reading - NO POLLING!
+        $startTime = microtime(true);
+
+        $ipc->setupParent(
+            // onData callback - called INSTANTLY when child sends
+            function ($data) use ($connection, $message, $startTime) {
+                $this->handleChildData($connection, $message, $data);
+
+                // Log latency for debugging
+                $elapsed = (microtime(true) - $startTime) * 1000;
+                if ($elapsed > 10) {
+                    Log::channel('websocket')->debug('IPC latency: ' . round($elapsed, 2) . 'ms');
+                }
+            },
+            // onClose callback - child process ended
+            function () {
+                // Cleanup zombie process
+                pcntl_waitpid(-1, $status, WNOHANG);
+            }
+        );
+    }
+
+    /**
+     * Handle data received from child via socket pair
+     */
+    protected function handleChildData(ConnectionInterface $connection, array $message, $data): void
+    {
+        if (!$data) {
+            return;
+        }
+
+        // If it's already a string (JSON), try to parse for broadcast/whisper
+        if (is_string($data)) {
+            $bm = json_decode($data, true);
+
+            if (isset($bm['broadcast']) && $bm['broadcast']) {
+                $this->broadcast(
+                    $connection->app->id,
+                    $bm['data'] ?? null,
+                    $bm['event'] ?? null,
+                    $bm['channel'] ?? null,
+                    $bm['including_self'] ?? false,
+                    $connection
+                );
+                return;
+            }
+
+            if (isset($bm['whisper']) && $bm['whisper']) {
+                $this->whisper(
+                    $connection->app->id,
+                    $bm['data'] ?? null,
+                    $bm['event'] ?? null,
+                    $bm['socket_ids'] ?? [],
+                    $bm['channel'] ?? null,
+                );
+                return;
+            }
+
+            // Regular response
+            $connection->send($data);
+        }
+    }
+
+    /**
+     * Fork with polling-based IPC (fallback when socket pairs unavailable)
+     */
+    protected function forkWithPolling(
+        ConnectionInterface $connection,
+        Channel $channel,
+        array $message
+    ): void {
         // Generate unique request ID BEFORE forking to avoid race conditions
-        // Using uniqid with more_entropy + random_bytes for guaranteed uniqueness
         $requestId = uniqid('req_', true) . '_' . bin2hex(random_bytes(4));
 
         $pid = pcntl_fork();
@@ -850,6 +1009,13 @@ class Handler implements MessageComponentInterface
         $this->cacheBufferScheduled = false;
     }
 
+    /**
+     * IPC polling interval in seconds.
+     * Lower = faster response, higher CPU usage.
+     * 0.001 = 1ms, 0.002 = 2ms, 0.01 = 10ms
+     */
+    private const IPC_POLL_INTERVAL = 0.002; // 2ms - good balance of speed and CPU
+
     private function addDataCheckLoop(
         $connection,
         $message,
@@ -861,7 +1027,7 @@ class Handler implements MessageComponentInterface
         $cacheKeyStart = 'dedicated_start_' . $iterationKey;
         IpcCache::put($cacheKeyStart, microtime(true), 100);
 
-        $this->channelManager->loop->addPeriodicTimer(0.01, function ($timer) use (
+        $this->channelManager->loop->addPeriodicTimer(self::IPC_POLL_INTERVAL, function ($timer) use (
             $cacheKeyStart,
             $iterationKey,
             $message,

@@ -2,9 +2,11 @@
 
 namespace BlaxSoftware\LaravelWebSockets\Console\Commands;
 
+use BlaxSoftware\LaravelWebSockets\Cache\IpcCache;
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
 use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector as StatisticsCollectorFacade;
 use BlaxSoftware\LaravelWebSockets\Facades\WebSocketRouter;
+use BlaxSoftware\LaravelWebSockets\Ipc\SocketPairIpc;
 use BlaxSoftware\LaravelWebSockets\Server\Loggers\ConnectionLogger;
 use BlaxSoftware\LaravelWebSockets\Server\Loggers\HttpLogger;
 use BlaxSoftware\LaravelWebSockets\Server\Loggers\WebSocketsLogger;
@@ -384,6 +386,9 @@ class StartServer extends Command
      */
     protected function startServer()
     {
+        // Log comprehensive startup information
+        $this->logServerStartupInfo();
+
         \Log::channel('websocket')->info('Starting WebSocket server...', [
             'host' => $this->option('host'),
             'port' => $this->option('port'),
@@ -399,6 +404,103 @@ class StartServer extends Command
 
         $this->server->run();
         \Log::channel('websocket')->debug('Event loop stopped, server shutdown complete');
+    }
+
+    /**
+     * Log comprehensive server startup information
+     */
+    protected function logServerStartupInfo(): void
+    {
+        $divider = str_repeat('=', 60);
+
+        // System info
+        $phpVersion = PHP_VERSION;
+        $phpSapi = PHP_SAPI;
+        $os = PHP_OS;
+        $arch = php_uname('m');
+
+        // IPC Cache info
+        $ipcUseTmpfs = IpcCache::isTmpfs();
+        $ipcStatus = $ipcUseTmpfs ? '/dev/shm (RAM-backed)' : '/tmp (disk-backed)';
+
+        // Socket pair IPC support
+        $socketPairSupported = SocketPairIpc::isSupported();
+
+        // Memory info
+        $memoryLimit = ini_get('memory_limit');
+
+        // ReactPHP loop type
+        $loopClass = get_class($this->loop);
+
+        // Extensions
+        $extensions = [
+            'pcntl' => extension_loaded('pcntl') ? 'enabled' : 'disabled',
+            'posix' => extension_loaded('posix') ? 'enabled' : 'disabled',
+            'sockets' => extension_loaded('sockets') ? 'enabled' : 'disabled',
+            'ev' => extension_loaded('ev') ? 'enabled' : 'disabled',
+            'event' => extension_loaded('event') ? 'enabled' : 'disabled',
+            'uv' => extension_loaded('uv') ? 'enabled' : 'disabled',
+        ];
+
+        // IPC polling interval
+        $ipcPollInterval = '2ms'; // From Handler::IPC_POLL_INTERVAL
+
+        // Build startup message
+        $startupInfo = [
+            'php_version' => $phpVersion,
+            'php_sapi' => $phpSapi,
+            'os' => $os,
+            'arch' => $arch,
+            'memory_limit' => $memoryLimit,
+            'ipc_storage' => $ipcStatus,
+            'ipc_tmpfs' => $ipcUseTmpfs,
+            'ipc_socket_pair' => $socketPairSupported,
+            'ipc_poll_interval' => $ipcPollInterval,
+            'event_loop' => $loopClass,
+            'extensions' => $extensions,
+            'pid' => getmypid(),
+            'host' => $this->option('host'),
+            'port' => $this->option('port'),
+            'cache_driver' => $this->option('cache-driver'),
+        ];
+
+        // Log to file
+        \Log::channel('websocket')->info($divider);
+        \Log::channel('websocket')->info('WEBSOCKET SERVER STARTING');
+        \Log::channel('websocket')->info($divider);
+        \Log::channel('websocket')->info('PHP Version: ' . $phpVersion . ' (' . $phpSapi . ')');
+        \Log::channel('websocket')->info('OS: ' . $os . ' (' . $arch . ')');
+        \Log::channel('websocket')->info('Memory Limit: ' . $memoryLimit);
+        \Log::channel('websocket')->info('Event Loop: ' . $loopClass);
+        \Log::channel('websocket')->info('IPC Storage: ' . $ipcStatus);
+        \Log::channel('websocket')->info('Socket Pair IPC: ' . ($socketPairSupported ? 'ENABLED (event-driven, no polling)' : 'disabled'));
+        \Log::channel('websocket')->info('IPC Poll Fallback: ' . ($socketPairSupported ? 'not used' : $ipcPollInterval));
+        \Log::channel('websocket')->info('Extensions: pcntl=' . $extensions['pcntl'] . ', sockets=' . $extensions['sockets'] . ', ev=' . $extensions['ev']);
+        \Log::channel('websocket')->info('PID: ' . getmypid());
+        \Log::channel('websocket')->info($divider);
+
+        // Also output to console
+        $this->newLine();
+        $this->components->twoColumnDetail('<fg=cyan>PHP Version</>', $phpVersion . ' (' . $phpSapi . ')');
+        $this->components->twoColumnDetail('<fg=cyan>OS</>', $os . ' (' . $arch . ')');
+        $this->components->twoColumnDetail('<fg=cyan>Memory Limit</>', $memoryLimit);
+        $this->components->twoColumnDetail('<fg=cyan>Event Loop</>', class_basename($loopClass));
+        $this->components->twoColumnDetail(
+            '<fg=cyan>IPC Storage</>',
+            $ipcUseTmpfs ? '<fg=green>RAM-backed (/dev/shm)</>' : '<fg=yellow>Disk-backed (/tmp)</>'
+        );
+        $this->components->twoColumnDetail(
+            '<fg=cyan>Socket Pair IPC</>',
+            $socketPairSupported ? '<fg=green>ENABLED (event-driven)</>' : '<fg=yellow>disabled (will poll)</>'
+        );
+        $this->components->twoColumnDetail(
+            '<fg=cyan>IPC Poll Fallback</>',
+            $socketPairSupported ? '<fg=gray>not used</>' : '<fg=yellow>' . $ipcPollInterval . '</>'
+        );
+        $this->components->twoColumnDetail('<fg=cyan>PCNTL</>', $extensions['pcntl'] === 'enabled' ? '<fg=green>enabled</>' : '<fg=red>disabled</>');
+        $this->components->twoColumnDetail('<fg=cyan>Sockets Extension</>', $extensions['sockets'] === 'enabled' ? '<fg=green>enabled</>' : '<fg=yellow>disabled</>');
+        $this->components->twoColumnDetail('<fg=cyan>EV Extension</>', $extensions['ev'] === 'enabled' ? '<fg=green>enabled (fast loop)</>' : '<fg=gray>not installed</>');
+        $this->newLine();
     }
 
     /**
