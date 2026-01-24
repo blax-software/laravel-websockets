@@ -59,12 +59,7 @@ class ControllerResolver
             return self::$controllerCache[$eventPrefix];
         }
 
-        // Ensure controllers are scanned
-        if (!self::$scanned) {
-            self::scanControllers();
-        }
-
-        // Try to find the controller
+        // Try to find the controller (skip scanning in forked children - classes are already loaded)
         $controllerClass = self::findController($eventPrefix);
 
         // Cache the result (even if null, to avoid repeated lookups)
@@ -75,58 +70,56 @@ class ControllerResolver
 
     /**
      * Find controller using multiple strategies
+     * Optimized for speed: most common case (direct match) checked first
      */
     private static function findController(string $eventPrefix): ?string
     {
-        // Strategy 1: Direct match (e.g., 'app' → 'AppController')
+        // Strategy 1: Direct match in app namespace (most common case)
+        // e.g., 'app' → '\App\Websocket\Controllers\AppController'
         $directName = self::kebabToPascal($eventPrefix) . 'Controller';
-        if ($class = self::findInAvailable($directName)) {
-            return $class;
+        $appClass = self::APP_NAMESPACE . $directName;
+        
+        // class_exists with autoload=true is fast for already-loaded classes
+        if (class_exists($appClass, true)) {
+            return $appClass;
         }
 
-        // Strategy 2: Folder structure (e.g., 'admin-user' → 'Admin/UserController')
+        // Strategy 2: Direct match in vendor namespace
+        $vendorClass = self::VENDOR_NAMESPACE . $directName;
+        if (class_exists($vendorClass, true)) {
+            return $vendorClass;
+        }
+
+        // Strategy 3: Check pre-scanned available controllers (if scanned)
+        if (self::$scanned) {
+            if ($class = self::findInAvailable($directName)) {
+                return $class;
+            }
+        }
+
+        // Strategy 4: Folder structure (e.g., 'admin-user' → 'Admin/UserController')
+        // Only try this for kebab-case names with multiple parts
         $parts = explode('-', $eventPrefix);
         if (count($parts) > 1) {
-            // Try progressively deeper folder structures
-            // 'admin-user-settings' tries:
-            //   - Admin/User/SettingsController
-            //   - Admin/UserSettingsController
-            //   - AdminUser/SettingsController
-
             for ($folderDepth = count($parts) - 1; $folderDepth >= 1; $folderDepth--) {
                 $folderParts = array_slice($parts, 0, $folderDepth);
                 $nameParts = array_slice($parts, $folderDepth);
 
-                $folder = implode('/', array_map('ucfirst', $folderParts));
+                $folder = implode('\\', array_map('ucfirst', $folderParts));
                 $name = implode('', array_map('ucfirst', $nameParts)) . 'Controller';
 
                 // Try app namespace with folder
-                $appClass = self::APP_NAMESPACE . str_replace('/', '\\', $folder) . '\\' . $name;
-                if (class_exists($appClass)) {
-                    self::$availableControllers[strtolower($name)] = $appClass;
+                $appClass = self::APP_NAMESPACE . $folder . '\\' . $name;
+                if (class_exists($appClass, true)) {
                     return $appClass;
                 }
 
                 // Try vendor namespace with folder
-                $vendorClass = self::VENDOR_NAMESPACE . str_replace('/', '\\', $folder) . '\\' . $name;
-                if (class_exists($vendorClass)) {
-                    self::$availableControllers[strtolower($name)] = $vendorClass;
+                $vendorClass = self::VENDOR_NAMESPACE . $folder . '\\' . $name;
+                if (class_exists($vendorClass, true)) {
                     return $vendorClass;
                 }
             }
-        }
-
-        // Strategy 3: Dynamic class_exists check (for newly added controllers)
-        $appClass = self::APP_NAMESPACE . $directName;
-        if (class_exists($appClass)) {
-            self::$availableControllers[strtolower($directName)] = $appClass;
-            return $appClass;
-        }
-
-        $vendorClass = self::VENDOR_NAMESPACE . $directName;
-        if (class_exists($vendorClass)) {
-            self::$availableControllers[strtolower($directName)] = $vendorClass;
-            return $vendorClass;
         }
 
         return null;

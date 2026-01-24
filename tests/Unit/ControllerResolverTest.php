@@ -26,11 +26,12 @@ class ControllerResolverTest extends TestCase
     /** @test */
     public function it_caches_resolved_controllers()
     {
-        // First call scans and caches
+        // First call resolves and caches
         ControllerResolver::resolve('pusher');
 
         $stats = ControllerResolver::getStats();
-        $this->assertTrue($stats['scanned']);
+        // scanned may or may not be true (we no longer auto-scan on resolve)
+        // but cached should be > 0
         $this->assertGreaterThan(0, $stats['cached']);
     }
 
@@ -63,8 +64,8 @@ class ControllerResolverTest extends TestCase
     /** @test */
     public function it_clears_cache_correctly()
     {
-        // Populate cache
-        ControllerResolver::resolve('pusher');
+        // Preload to ensure scanned is true
+        ControllerResolver::preload();
 
         $statsBefore = ControllerResolver::getStats();
         $this->assertTrue($statsBefore['scanned']);
