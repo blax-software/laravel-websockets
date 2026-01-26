@@ -4,6 +4,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Hot Reload (Development Mode)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, controller files are reloaded on every request instead of
+    | being cached. This allows you to make code changes without restarting
+    | the WebSocket server. Disable in production for better performance.
+    |
+    */
+    'hot_reload' => env('WEBSOCKET_HOT_RELOAD', env('APP_DEBUG', false)),
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard Settings
     |--------------------------------------------------------------------------
     |

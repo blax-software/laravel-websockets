@@ -12,6 +12,7 @@ namespace BlaxSoftware\LaravelWebSockets\Websocket;
  * - Kebab-case: `admin-user.method` → `AdminUserController`
  * - Folder structure: `admin-user.method` → `Admin/UserController` (fuzzy)
  * - Dynamic discovery: new controllers are found and cached at runtime
+ * - Hot reload: disable caching in dev mode for instant code updates
  */
 class ControllerResolver
 {
@@ -37,6 +38,19 @@ class ControllerResolver
     private static bool $scanned = false;
 
     /**
+     * Hot reload mode - when enabled, caching is disabled for development
+     */
+    private static ?bool $hotReload = null;
+
+    /**
+     * Track when classes were loaded to detect stale code
+     * Maps class name => file mtime at load time
+     *
+     * @var array<string, int>
+     */
+    private static array $classLoadTimes = [];
+
+    /**
      * App controller namespace
      */
     private const APP_NAMESPACE = '\\App\\Websocket\\Controllers\\';
@@ -47,6 +61,17 @@ class ControllerResolver
     private const VENDOR_NAMESPACE = '\\BlaxSoftware\\LaravelWebSockets\\Websocket\\Controllers\\';
 
     /**
+     * Check if hot reload mode is enabled
+     */
+    private static function isHotReload(): bool
+    {
+        if (self::$hotReload === null) {
+            self::$hotReload = (bool) config('websockets.hot_reload', false);
+        }
+        return self::$hotReload;
+    }
+
+    /**
      * Resolve controller class for an event prefix
      *
      * @param string $eventPrefix The event prefix (e.g., 'app', 'admin-user', 'admin-user-settings')
@@ -54,6 +79,11 @@ class ControllerResolver
      */
     public static function resolve(string $eventPrefix): ?string
     {
+        // In hot reload mode, skip cache and invalidate opcache for fresh code
+        if (self::isHotReload()) {
+            return self::resolveWithHotReload($eventPrefix);
+        }
+
         // Check cache first (O(1) lookup)
         if (array_key_exists($eventPrefix, self::$controllerCache)) {
             return self::$controllerCache[$eventPrefix];
@@ -66,6 +96,97 @@ class ControllerResolver
         self::$controllerCache[$eventPrefix] = $controllerClass;
 
         return $controllerClass;
+    }
+
+    /**
+     * Resolve controller with hot reload - invalidates opcache for fresh code
+     * This is slower but allows code changes without server restart
+     */
+    private static function resolveWithHotReload(string $eventPrefix): ?string
+    {
+        $directName = self::kebabToPascal($eventPrefix) . 'Controller';
+        
+        // Try app namespace first
+        $appClass = self::APP_NAMESPACE . $directName;
+        $appFile = self::getControllerFilePath($appClass);
+        
+        if ($appFile && file_exists($appFile)) {
+            self::invalidateAndReload($appFile);
+            if (class_exists($appClass, true)) {
+                return $appClass;
+            }
+        }
+
+        // Try vendor namespace
+        $vendorClass = self::VENDOR_NAMESPACE . $directName;
+        $vendorFile = self::getControllerFilePath($vendorClass);
+        
+        if ($vendorFile && file_exists($vendorFile)) {
+            self::invalidateAndReload($vendorFile);
+            if (class_exists($vendorClass, true)) {
+                return $vendorClass;
+            }
+        }
+
+        // Try folder structure for kebab-case names
+        $parts = explode('-', $eventPrefix);
+        if (count($parts) > 1) {
+            for ($folderDepth = count($parts) - 1; $folderDepth >= 1; $folderDepth--) {
+                $folderParts = array_slice($parts, 0, $folderDepth);
+                $nameParts = array_slice($parts, $folderDepth);
+
+                $folder = implode('/', array_map('ucfirst', $folderParts));
+                $name = implode('', array_map('ucfirst', $nameParts)) . 'Controller';
+
+                // Try app namespace with folder
+                $appClass = self::APP_NAMESPACE . str_replace('/', '\\', $folder) . '\\' . $name;
+                $appFile = self::getControllerFilePath($appClass);
+                
+                if ($appFile && file_exists($appFile)) {
+                    self::invalidateAndReload($appFile);
+                    if (class_exists($appClass, true)) {
+                        return $appClass;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Invalidate opcache for a file and force reload
+     */
+    private static function invalidateAndReload(string $filePath): void
+    {
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($filePath, true);
+        }
+    }
+
+    /**
+     * Get the file path for a controller class
+     */
+    private static function getControllerFilePath(string $className): ?string
+    {
+        // For App namespace
+        if (str_starts_with($className, self::APP_NAMESPACE)) {
+            $relativePath = str_replace(self::APP_NAMESPACE, '', $className);
+            $relativePath = str_replace('\\', '/', $relativePath);
+            $appPath = self::getAppControllersPath();
+            if ($appPath) {
+                return $appPath . '/' . $relativePath . '.php';
+            }
+        }
+        
+        // For vendor namespace
+        if (str_starts_with($className, self::VENDOR_NAMESPACE)) {
+            $relativePath = str_replace(self::VENDOR_NAMESPACE, '', $className);
+            $relativePath = str_replace('\\', '/', $relativePath);
+            return __DIR__ . '/Controllers/' . $relativePath . '.php';
+        }
+
+        return null;
     }
 
     /**
@@ -254,12 +375,13 @@ class ControllerResolver
         self::$controllerCache = [];
         self::$availableControllers = [];
         self::$scanned = false;
+        self::$hotReload = null;
     }
 
     /**
      * Get cache statistics (for debugging)
      *
-     * @return array{cached: int, available: int, scanned: bool}
+     * @return array{cached: int, available: int, scanned: bool, hot_reload: bool}
      */
     public static function getStats(): array
     {
@@ -267,6 +389,7 @@ class ControllerResolver
             'cached' => count(self::$controllerCache),
             'available' => count(self::$availableControllers),
             'scanned' => self::$scanned,
+            'hot_reload' => self::isHotReload(),
         ];
     }
 
