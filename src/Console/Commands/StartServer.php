@@ -450,10 +450,18 @@ class StartServer extends Command
      * - Caches discovered controllers in memory for O(1) lookup
      * - Supports folder-based controllers (e.g., Admin/UserController)
      *
+     * NOTE: Skipped when hot_reload is enabled to allow code changes without restart.
+     *
      * @return void
      */
     protected function preloadControllers(): void
     {
+        // Skip preloading when hot_reload is enabled - this allows code changes without restart
+        if (config('websockets.hot_reload', false)) {
+            \Log::channel('websocket')->debug('Controller preloading skipped (hot_reload enabled)');
+            return;
+        }
+
         // Use ControllerResolver to scan and cache all controllers
         \BlaxSoftware\LaravelWebSockets\Websocket\ControllerResolver::preload();
 
