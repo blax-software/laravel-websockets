@@ -1210,21 +1210,32 @@ class Handler implements MessageComponentInterface
         mixed $payload,
         ?string $event = null,
         array $socketIds = [],
-        ?string $channel = null
+        ?string $channelName = null
     ): void {
-        $channel = $this->channelManager->findOrCreate($appId, $channel);
-
         $p = [
             'event' => ($event ?? $event),
             'data' => $payload,
-            'channel' => $channel->getName(),
+            'channel' => $channelName,
         ];
 
         $socketIdLookup = array_flip($socketIds);
-        foreach ($channel->getConnections() as $channel_conection) {
-            if (isset($socketIdLookup[$channel_conection->socketId])) {
-                $channel_conection->send(json_encode($p));
+        $encoded = json_encode($p);
+        $sentTo = [];
+
+        // Search ALL connections across ALL channels to find target socket IDs
+        // This is necessary because whisper targets specific sockets regardless of channel
+        $this->channelManager->getLocalConnections()->then(function ($connections) use ($socketIdLookup, $encoded, &$sentTo) {
+            foreach ($connections as $connection) {
+                // Skip if already sent to this socket (can appear in multiple channels)
+                if (isset($sentTo[$connection->socketId])) {
+                    continue;
+                }
+
+                if (isset($socketIdLookup[$connection->socketId])) {
+                    $connection->send($encoded);
+                    $sentTo[$connection->socketId] = true;
+                }
             }
-        }
+        });
     }
 }

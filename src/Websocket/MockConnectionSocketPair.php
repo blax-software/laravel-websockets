@@ -34,6 +34,40 @@ class MockConnectionSocketPair implements ConnectionInterface
         return $this;
     }
 
+    /**
+     * Broadcast a message to all connections in a channel.
+     * Serializes the data for the parent process to handle.
+     */
+    public function broadcast(
+        $data,
+        ?string $channel = null,
+        bool $including_self = false,
+    ): self {
+        $data ??= [];
+        $data['broadcast'] = true;
+        $data['channel'] ??= $channel;
+        $data['including_self'] = $including_self;
+
+        return $this->send(json_encode($data));
+    }
+
+    /**
+     * Whisper a message to specific socket IDs.
+     * Serializes the data for the parent process to handle.
+     */
+    public function whisper(
+        $data,
+        array $socketIds,
+        ?string $channel = null,
+    ): self {
+        $data ??= [];
+        $data['whisper'] = true;
+        $data['channel'] ??= $channel;
+        $data['socket_ids'] = $socketIds;
+
+        return $this->send(json_encode($data));
+    }
+
     public function close(): void
     {
         // No-op for mock

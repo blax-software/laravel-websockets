@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 class Controller
 {
     protected bool $isMockConnection;
-    protected ?MockConnection $mockConnectionClone = null;
+    protected MockConnection|MockConnectionSocketPair|null $mockConnectionClone = null;
 
     final public function __construct(
         protected ConnectionInterface $connection,
@@ -24,7 +24,9 @@ class Controller
         protected LocalChannelManager|RedisChannelManager $channelManager
     ) {
         // Cache class check to avoid repeated get_class() calls (reflection is slow)
-        $this->isMockConnection = get_class($connection) === MockConnection::class;
+        $connectionClass = get_class($connection);
+        $this->isMockConnection = $connectionClass === MockConnection::class
+            || $connectionClass === MockConnectionSocketPair::class;
 
         // Pre-clone MockConnection once if needed (reuse across method calls)
         if ($this->isMockConnection) {
@@ -319,22 +321,28 @@ class Controller
         ];
 
         if (!$this->isMockConnection) {
-            if (! $channel) {
-                $this->error('Channel not found');
-                return;
-            }
-
             // Pre-encode ONCE for all matching sockets
             $encoded = json_encode($p);
 
             // Use array_flip for O(1) lookup instead of O(n) in_array
             $socketIdLookup = array_flip($socketIds);
+            $sentTo = [];
 
-            foreach ($this->channel->getConnections() as $channel_conection) {
-                if (isset($socketIdLookup[$channel_conection->socketId])) {
-                    $channel_conection->send($encoded);
+            // Search ALL connections across ALL channels to find target socket IDs
+            // This is necessary because whisper targets specific sockets regardless of channel
+            $this->channelManager->getLocalConnections()->then(function ($connections) use ($socketIdLookup, $encoded, &$sentTo) {
+                foreach ($connections as $connection) {
+                    // Skip if already sent to this socket (can appear in multiple channels)
+                    if (isset($sentTo[$connection->socketId])) {
+                        continue;
+                    }
+
+                    if (isset($socketIdLookup[$connection->socketId])) {
+                        $connection->send($encoded);
+                        $sentTo[$connection->socketId] = true;
+                    }
                 }
-            }
+            });
         } else {
             $this->mockConnectionClone->whisper(
                 $p,
