@@ -64,6 +64,11 @@ class Handler implements MessageComponentInterface
     private const GC_INTERVAL = 100;
 
     /**
+     * Whether hot reload is enabled (cached for performance)
+     */
+    private static ?bool $hotReload = null;
+
+    /**
      * Initialize a new handler.
      */
     public function __construct(
@@ -362,6 +367,120 @@ class Handler implements MessageComponentInterface
     }
 
     /**
+     * Check if hot reload mode is enabled
+     */
+    protected static function isHotReload(): bool
+    {
+        if (self::$hotReload === null) {
+            self::$hotReload = (bool) config('websockets.hot_reload', false);
+        }
+        return self::$hotReload;
+    }
+
+    /**
+     * Hot reload: Clear all caches in child process for fresh code loading
+     * This allows Models, Resources, Services, and everything else to be reloaded
+     * without restarting the WebSocket server.
+     *
+     * Only called when websockets.hot_reload is enabled.
+     */
+    protected function hotReloadChild(): void
+    {
+        if (!self::isHotReload()) {
+            return;
+        }
+
+        // 1. Clear OPcache - forces PHP to recompile files from disk
+        if (function_exists('opcache_reset')) {
+            opcache_reset();
+        }
+
+        // 2. Clear Laravel's compiled services and config cache in container
+        $container = \Illuminate\Container\Container::getInstance();
+
+        // 3. Flush resolved instances - forces fresh instantiation
+        //    This clears all singleton instances so they get rebuilt
+        $container->forgetScopedInstances();
+
+        // 4. Clear config repository cache (forces fresh config reads)
+        //    Re-read all config files from disk
+        try {
+            /** @var \Illuminate\Config\Repository $config */
+            $config = $container->make('config');
+
+            // Get the path to config files
+            $configPath = base_path('config');
+
+            if (is_dir($configPath)) {
+                $files = glob($configPath . '/*.php');
+                foreach ($files as $file) {
+                    $key = basename($file, '.php');
+                    // Invalidate opcache for this config file
+                    if (function_exists('opcache_invalidate')) {
+                        opcache_invalidate($file, true);
+                    }
+                    // Force re-require the config file
+                    $freshConfig = require $file;
+                    $config->set($key, $freshConfig);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Config refresh failed, continue anyway
+            Log::channel('websocket')->debug('Hot reload config refresh failed: ' . $e->getMessage());
+        }
+
+        // 5. Clear view cache (if views are being used in responses)
+        try {
+            if ($container->bound('view')) {
+                $container->forgetInstance('view');
+            }
+        } catch (\Throwable $e) {
+            // View refresh failed, continue anyway
+        }
+
+        // 6. Clear route cache (if routes are dynamically resolved)
+        try {
+            if ($container->bound('router')) {
+                $container->forgetInstance('router');
+            }
+        } catch (\Throwable $e) {
+            // Router refresh failed, continue anyway
+        }
+
+        // 7. Clear translation cache
+        try {
+            if ($container->bound('translator')) {
+                $container->forgetInstance('translator');
+            }
+        } catch (\Throwable $e) {
+            // Translator refresh failed, continue anyway
+        }
+
+        // 8. Clear validation factory (for custom rules)
+        try {
+            if ($container->bound('validator')) {
+                $container->forgetInstance('validator');
+            }
+        } catch (\Throwable $e) {
+            // Validator refresh failed, continue anyway
+        }
+
+        // 9. Clear event dispatcher cache (for fresh event/listener bindings)
+        try {
+            if ($container->bound('events')) {
+                $container->forgetInstance('events');
+            }
+        } catch (\Throwable $e) {
+            // Events refresh failed, continue anyway
+        }
+
+        // 10. Clear WebSocket ControllerResolver cache for fresh controller loading
+        ControllerResolver::clearCache();
+
+        Log::channel('websocket')->debug('Hot reload: caches cleared in child process');
+    }
+
+    /**
      * Fork with event-driven socket pair IPC (no polling!)
      * Parent is notified INSTANTLY when child sends data
      */
@@ -383,6 +502,9 @@ class Handler implements MessageComponentInterface
         if ($pid === 0) {
             // === CHILD PROCESS ===
             $ipc->setupChild();
+
+            // Hot reload: clear all caches for fresh code loading (only in dev mode)
+            $this->hotReloadChild();
 
             try {
                 // Lazy DB reconnect: disconnect now, reconnect only when first query runs
@@ -516,6 +638,9 @@ class Handler implements MessageComponentInterface
         array $message,
         string $requestId
     ): void {
+        // Hot reload: clear all caches for fresh code loading (only in dev mode)
+        $this->hotReloadChild();
+
         try {
             // Lazy DB reconnect: disconnect now, reconnect only when first query runs
             // This saves ~5-15ms for methods that don't use the database

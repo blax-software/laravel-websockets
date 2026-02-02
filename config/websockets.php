@@ -7,9 +7,19 @@ return [
     | Hot Reload (Development Mode)
     |--------------------------------------------------------------------------
     |
-    | When enabled, controller files are reloaded on every request instead of
-    | being cached. This allows you to make code changes without restarting
-    | the WebSocket server. Disable in production for better performance.
+    | When enabled, ALL code is reloaded on every request in child processes.
+    | This includes Models, Resources, Services, Controllers, Config, and
+    | everything else - allowing code changes without restarting the server.
+    |
+    | How it works:
+    | - OPcache is cleared in child processes (forces PHP to recompile files)
+    | - Laravel container singletons are reset (forces fresh instantiation)
+    | - Config files are re-read from disk
+    | - View, route, translation, and validation caches are cleared
+    | - WebSocket ControllerResolver cache is cleared
+    |
+    | WARNING: Disable in production for better performance. Hot reload adds
+    | ~5-15ms overhead per request due to cache clearing and file re-reads.
     |
     */
     'hot_reload' => env('WEBSOCKET_HOT_RELOAD', env('APP_DEBUG', false)),
