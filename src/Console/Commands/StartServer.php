@@ -2,6 +2,7 @@
 
 namespace BlaxSoftware\LaravelWebSockets\Console\Commands;
 
+use BlaxSoftware\LaravelWebSockets\Broadcast\BroadcastSocketServer;
 use BlaxSoftware\LaravelWebSockets\Cache\IpcCache;
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
 use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector as StatisticsCollectorFacade;
@@ -150,6 +151,10 @@ class StartServer extends Command
             \Log::channel('websocket')->debug('Configuring PCNTL signals...');
             $this->configurePcntlSignal();
             \Log::channel('websocket')->debug('PCNTL signals configured');
+
+            \Log::channel('websocket')->debug('Configuring broadcast socket...');
+            $this->configureBroadcastSocket();
+            \Log::channel('websocket')->debug('Broadcast socket configured');
 
             // $this->configurePongTracker();
 
@@ -315,6 +320,37 @@ class StartServer extends Command
             $this->triggerShutdown();
         });
         \Log::channel('websocket')->debug('SIGINT handler registered');
+    }
+
+    /**
+     * Configure the broadcast socket server for efficient broadcasting.
+     *
+     * This creates a Unix domain socket that external processes (queue workers,
+     * HTTP requests, etc.) can connect to for sending broadcasts without the
+     * overhead of creating new WebSocket connections.
+     *
+     * @return void
+     */
+    protected function configureBroadcastSocket(): void
+    {
+        if (config('websockets.broadcast_socket_enabled', true) === false) {
+            \Log::channel('websocket')->debug('Broadcast socket disabled by config');
+            return;
+        }
+
+        try {
+            $channelManager = $this->laravel->make(ChannelManager::class);
+            $broadcastServer = new BroadcastSocketServer($this->loop, $channelManager);
+            $broadcastServer->start();
+
+            // Store reference for cleanup on shutdown
+            $this->laravel->instance(BroadcastSocketServer::class, $broadcastServer);
+
+            $this->components->info('Broadcast socket listening on ' . $broadcastServer->getSocketPath());
+        } catch (\Throwable $e) {
+            \Log::channel('websocket')->warning('Failed to start broadcast socket: ' . $e->getMessage());
+            $this->components->warn('Broadcast socket failed to start: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -666,6 +702,9 @@ class StartServer extends Command
         \Log::channel('websocket')->info('Triggering hard shutdown...');
         $this->line('Hard shutdown initiated, stopping server immediately...');
 
+        // Stop the broadcast socket server
+        $this->stopBroadcastSocket();
+
         $this->loop->stop();
     }
 
@@ -702,7 +741,29 @@ class StartServer extends Command
             })
             ->then(function () {
                 \Log::channel('websocket')->debug('All connections closed, stopping loop...');
+
+                // Stop the broadcast socket server
+                $this->stopBroadcastSocket();
+
                 $this->loop->stop();
             });
+    }
+
+    /**
+     * Stop the broadcast socket server if running.
+     *
+     * @return void
+     */
+    protected function stopBroadcastSocket(): void
+    {
+        try {
+            if ($this->laravel->bound(BroadcastSocketServer::class)) {
+                $broadcastServer = $this->laravel->make(BroadcastSocketServer::class);
+                $broadcastServer->stop();
+                \Log::channel('websocket')->debug('Broadcast socket server stopped');
+            }
+        } catch (\Throwable $e) {
+            \Log::channel('websocket')->warning('Error stopping broadcast socket: ' . $e->getMessage());
+        }
     }
 }

@@ -4,9 +4,83 @@ declare(strict_types=1);
 
 namespace BlaxSoftware\LaravelWebSockets\Services;
 
+use BlaxSoftware\LaravelWebSockets\Broadcast\BroadcastClient;
+
 class WebsocketService
 {
+    /**
+     * Send a message via WebSocket.
+     *
+     * Automatically uses the efficient Unix socket broadcast when available,
+     * falling back to creating a new WebSocket connection when not.
+     */
     public static function send(
+        string $event,
+        mixed $data,
+        $channel = 'websocket'
+    ) {
+        // Try efficient broadcast socket first (Unix socket IPC)
+        if (ws_available()) {
+            $success = ws_broadcast($event, is_array($data) ? $data : ['data' => $data], $channel ?? 'websocket');
+            if ($success) {
+                return (object)['success' => true, 'method' => 'broadcast_socket'];
+            }
+            // Fall through to WebSocket client if broadcast socket fails
+        }
+
+        // Fallback: Create new WebSocket connection (slower, for when broadcast socket not available)
+        return static::sendViaWebSocket($event, $data, $channel);
+    }
+
+    /**
+     * Send a message to specific socket IDs only.
+     *
+     * @param string $event Event name
+     * @param mixed $data Event data
+     * @param array $sockets Target socket IDs
+     * @param string $channel Channel name
+     * @return bool Success
+     */
+    public static function whisper(
+        string $event,
+        mixed $data,
+        array $sockets,
+        string $channel = 'websocket'
+    ): bool {
+        if (!ws_available()) {
+            return false;
+        }
+
+        return ws_whisper($event, is_array($data) ? $data : ['data' => $data], $sockets, $channel);
+    }
+
+    /**
+     * Broadcast to all except specified socket IDs.
+     *
+     * @param string $event Event name
+     * @param mixed $data Event data
+     * @param array $excludeSockets Socket IDs to exclude
+     * @param string $channel Channel name
+     * @return bool Success
+     */
+    public static function broadcastExcept(
+        string $event,
+        mixed $data,
+        array $excludeSockets,
+        string $channel = 'websocket'
+    ): bool {
+        if (!ws_available()) {
+            return false;
+        }
+
+        return ws_broadcast_except($event, is_array($data) ? $data : ['data' => $data], $excludeSockets, $channel);
+    }
+
+    /**
+     * Send a message by creating a new WebSocket connection.
+     * This is the legacy method, kept for fallback when broadcast socket is unavailable.
+     */
+    protected static function sendViaWebSocket(
         string $event,
         mixed $data,
         $channel = 'websocket'

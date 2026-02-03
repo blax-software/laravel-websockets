@@ -74,7 +74,10 @@
     "autoload": {
         "psr-4": {
             "BlaxSoftware\\LaravelWebSockets\\": "src/"
-        }
+        },
+        "files": [
+            "src/helpers_global.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

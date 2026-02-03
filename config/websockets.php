@@ -26,6 +26,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Broadcast Socket Settings
+    |--------------------------------------------------------------------------
+    |
+    | The broadcast socket allows external PHP processes (queue workers, HTTP
+    | requests, etc.) to send broadcasts to WebSocket clients efficiently via
+    | a Unix domain socket, without the overhead of creating new connections.
+    |
+    | This provides global helper functions:
+    | - ws_broadcast($event, $data, $channel) - Broadcast to all clients
+    | - ws_whisper($event, $data, $sockets, $channel) - Send to specific sockets
+    | - ws_broadcast_except($event, $data, $exclude, $channel) - Broadcast except some
+    | - ws_available() - Check if broadcast socket is available
+    |
+    */
+    'broadcast_socket_enabled' => env('WEBSOCKET_BROADCAST_SOCKET', true),
+    'broadcast_socket' => env('WEBSOCKET_BROADCAST_SOCKET_PATH', '/tmp/laravel-websockets-broadcast.sock'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard Settings
     |--------------------------------------------------------------------------
     |
