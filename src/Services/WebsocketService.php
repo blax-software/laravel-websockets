@@ -34,6 +34,12 @@ class WebsocketService
                 $innerChannel = $data['channel'] ?? $channel ?? 'websocket';
                 $targetSockets = $data['sockets'] ?? null;
 
+                \Log::info('[WebsocketService] Sending via broadcast socket (app.whisp)', [
+                    'innerEvent' => $innerEvent,
+                    'innerChannel' => $innerChannel,
+                    'targetSockets' => $targetSockets ? count($targetSockets) : 'all',
+                ]);
+
                 if (!empty($targetSockets) && is_array($targetSockets)) {
                     // Whisper to specific sockets
                     $success = ws_whisper($innerEvent, $innerData, $targetSockets, $innerChannel);
@@ -45,6 +51,7 @@ class WebsocketService
                 if ($success) {
                     return (object)['success' => true, 'method' => 'broadcast_socket'];
                 }
+                \Log::warning('[WebsocketService] Broadcast socket failed, falling back to WebSocket');
                 // Fall through to WebSocket client if broadcast socket fails
             } else {
                 // Regular broadcast
@@ -54,6 +61,8 @@ class WebsocketService
                 }
                 // Fall through to WebSocket client if broadcast socket fails
             }
+        } else {
+            \Log::info('[WebsocketService] Broadcast socket not available, using WebSocket fallback');
         }
 
         // Fallback: Create new WebSocket connection (slower, for when broadcast socket not available)

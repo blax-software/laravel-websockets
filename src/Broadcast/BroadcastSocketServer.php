@@ -30,6 +30,8 @@ class BroadcastSocketServer
 
     protected string $socketPath;
 
+    protected string $appId;
+
     /**
      * Active client connections
      * @var ConnectionInterface[]
@@ -41,6 +43,7 @@ class BroadcastSocketServer
         $this->loop = $loop;
         $this->channelManager = $channelManager;
         $this->socketPath = config('websockets.broadcast_socket', '/tmp/laravel-websockets-broadcast.sock');
+        $this->appId = config('websockets.apps.0.id', 'websocket');
     }
 
     /**
@@ -122,13 +125,26 @@ class BroadcastSocketServer
             $sockets = $payload['sockets'] ?? null; // Target specific sockets
             $excludeSockets = $payload['exclude_sockets'] ?? []; // Exclude specific sockets
 
+            Log::info('[BroadcastSocket] Received broadcast request', [
+                'event' => $event,
+                'channel' => $channel,
+                'appId' => $this->appId,
+                'target_sockets' => $sockets ? count($sockets) : 'all',
+            ]);
+
             // Get channel instance and broadcast
-            $channelInstance = $this->channelManager->find('websockets', $channel);
+            $channelInstance = $this->channelManager->find($this->appId, $channel);
 
             if ($channelInstance) {
+                $connectionCount = count($channelInstance->getConnections());
+                Log::info('[BroadcastSocket] Found channel with connections', [
+                    'channel' => $channel,
+                    'connections' => $connectionCount,
+                ]);
                 $this->broadcastToChannel($channelInstance, $event, $data, $sockets, $excludeSockets);
                 $connection->write(json_encode(['success' => true]) . "\n");
             } else {
+                Log::info('[BroadcastSocket] Channel not found or no subscribers', ['channel' => $channel]);
                 // Channel doesn't exist or no subscribers - still success
                 $connection->write(json_encode(['success' => true, 'warning' => 'No channel subscribers']) . "\n");
             }
