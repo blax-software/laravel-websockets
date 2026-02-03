@@ -149,8 +149,8 @@ class BroadcastSocketServer
             'data' => $data,
         ]);
 
-        // Get subscribers
-        $subscribers = $channel->getSubscribedConnections();
+        // Get subscribers - use getConnections() method from Channel class
+        $subscribers = $channel->getConnections();
 
         foreach ($subscribers as $connection) {
             $socketId = $connection->socketId ?? null;
