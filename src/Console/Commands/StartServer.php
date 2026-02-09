@@ -510,7 +510,6 @@ class StartServer extends Command
         $commonClasses = [
             \BlaxSoftware\LaravelWebSockets\Websocket\Controller::class,
             \BlaxSoftware\LaravelWebSockets\Websocket\ControllerResolver::class,
-            \BlaxSoftware\LaravelWebSockets\Websocket\MockConnection::class,
             \BlaxSoftware\LaravelWebSockets\Websocket\MockConnectionSocketPair::class,
             \BlaxSoftware\LaravelWebSockets\Ipc\SocketPairIpc::class,
             \BlaxSoftware\LaravelWebSockets\Cache\IpcCache::class,

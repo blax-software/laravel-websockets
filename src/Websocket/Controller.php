@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 class Controller
 {
     protected bool $isMockConnection;
-    protected MockConnection|MockConnectionSocketPair|null $mockConnectionClone = null;
+    protected MockConnectionSocketPair|null $mockConnectionClone = null;
 
     final public function __construct(
         protected ConnectionInterface $connection,
@@ -25,8 +25,7 @@ class Controller
     ) {
         // Cache class check to avoid repeated get_class() calls (reflection is slow)
         $connectionClass = get_class($connection);
-        $this->isMockConnection = $connectionClass === MockConnection::class
-            || $connectionClass === MockConnectionSocketPair::class;
+        $this->isMockConnection = $connectionClass === MockConnectionSocketPair::class;
 
         // Pre-clone MockConnection once if needed (reuse across method calls)
         if ($this->isMockConnection) {
