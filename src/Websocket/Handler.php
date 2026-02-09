@@ -270,6 +270,9 @@ class Handler implements MessageComponentInterface
 
         $this->cleanupChannelConnections($connection);
         $this->finalizeConnectionClose($connection);
+
+        // Clean up per-connection session from Redis
+        cache()->forget('ws_session_' . $connection->socketId);
     }
 
 
@@ -492,7 +495,19 @@ class Handler implements MessageComponentInterface
                 // This saves ~5-15ms for methods that don't use the database
                 DB::disconnect();
 
+                // Purge inherited Redis/cache connections from parent process.
+                // After fork(), child inherits parent's Redis socket fd — using it
+                // would corrupt parent's protocol state. Purging forces fresh
+                // connections on next cache() call (predis connects lazily).
+                app()->forgetInstance('cache');
+                app()->forgetInstance('cache.store');
+                app()->forgetInstance('redis');
+
                 $this->setRequest($message, $connection);
+
+                // Set up per-connection session (backed by Redis)
+                $session = new ConnectionSession($connection->socketId);
+                app()->instance('ws.session', $session);
 
                 // Create mock that sends via socket pair
                 $mock = new MockConnectionSocketPair($connection, $ipc);
@@ -507,6 +522,9 @@ class Handler implements MessageComponentInterface
                 \Illuminate\Container\Container::getInstance()
                     ->make(\Illuminate\Support\Defer\DeferredCallbackCollection::class)
                     ->invokeWhen(fn($callback) => true);
+
+                // Persist session changes to Redis before exit
+                $session->save();
             } catch (Exception $e) {
                 // Send error via socket pair
                 $ipc->sendToParent(json_encode([

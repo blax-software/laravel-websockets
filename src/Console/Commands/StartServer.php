@@ -31,7 +31,7 @@ class StartServer extends Command
     protected $signature = 'websockets:serve
         {--host=0.0.0.0}
         {--port=6001}
-        {--cache-driver=file : The cache driver to use for the server. Redis will not work due to concurrency issues.}
+        {--cache-driver= : Override cache driver (defaults to app config, typically redis). File driver available as fallback.}
         {--disable-statistics=true : Disable the statistics tracking.}
         {--statistics-interval= : The amount of seconds to tick between statistics saving.}
         {--debug : Forces the loggers to be enabled and thereby overriding the APP_DEBUG setting.}
@@ -116,9 +116,13 @@ class StartServer extends Command
                 define('LARAVEL_IS_WEBSOCKET', true);
             }
 
-            // Fixes redis concurrency issues
-            config(['cache.default' => $this->option('cache-driver', 'file')]);
-            \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $this->option('cache-driver', 'file')]);
+            // Use app's configured cache driver (typically redis) unless explicitly overridden
+            // Previously forced to 'file' due to Redis concurrency issues after fork(),
+            // but now safe because: (1) cache() is only called in parent process,
+            // (2) child processes purge inherited Redis connections and get fresh ones
+            $cacheDriver = $this->option('cache-driver') ?: config('cache.default');
+            config(['cache.default' => $cacheDriver]);
+            \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $cacheDriver]);
 
             WebsocketService::resetAllTracking();
             \Log::channel('websocket')->debug('WebsocketService tracking reset');

@@ -100,3 +100,36 @@ if (!function_exists('ws_available')) {
         return BroadcastClient::instance()->isAvailable();
     }
 }
+
+if (!function_exists('wsSession')) {
+    /**
+     * Get the current WebSocket connection's session.
+     *
+     * Returns a per-connection key-value store backed by Redis.
+     * Available in child processes during message handling.
+     * Data persists across messages for the same connection.
+     *
+     * @return \BlaxSoftware\LaravelWebSockets\Websocket\ConnectionSession|null
+     *
+     * @example
+     * // Store data
+     * wsSession()->put('last_action', 'transmitted');
+     * wsSession()->put('transmit_count', 0);
+     *
+     * // Retrieve data (persists across messages)
+     * $count = wsSession()->get('transmit_count', 0);
+     * wsSession()->put('transmit_count', $count + 1);
+     *
+     * // Or use increment helper
+     * wsSession()->increment('transmit_count');
+     *
+     * // Check & remove
+     * if (wsSession()->has('pending_action')) {
+     *     wsSession()->forget('pending_action');
+     * }
+     */
+    function wsSession(): ?\BlaxSoftware\LaravelWebSockets\Websocket\ConnectionSession
+    {
+        return app()->bound('ws.session') ? app('ws.session') : null;
+    }
+}
