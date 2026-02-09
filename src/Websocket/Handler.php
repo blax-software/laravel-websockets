@@ -11,14 +11,12 @@ use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
 use BlaxSoftware\LaravelWebSockets\Events\ConnectionClosed;
 use BlaxSoftware\LaravelWebSockets\Events\NewConnection;
-use BlaxSoftware\LaravelWebSockets\Exceptions\WebSocketException;
 use BlaxSoftware\LaravelWebSockets\Ipc\SocketPairIpc;
 use BlaxSoftware\LaravelWebSockets\Websocket\MockConnectionSocketPair;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\ConnectionsOverCapacity;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\OriginNotAllowed;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\UnknownAppKey;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\WebSocketException as ExceptionsWebSocketException;
-use BlaxSoftware\LaravelWebSockets\Server\Messages\PusherMessageFactory;
 use BlaxSoftware\LaravelWebSockets\Server\QueryParameters;
 use Exception;
 use Illuminate\Support\Facades\Auth;
@@ -60,6 +58,11 @@ class Handler implements MessageComponentInterface
      * Whether hot reload is enabled (cached for performance)
      */
     private static ?bool $hotReload = null;
+
+    /**
+     * Whether debug mode is enabled (cached to avoid container resolution per message)
+     */
+    private static ?bool $debug = null;
 
     /**
      * Initialize a new handler.
@@ -176,7 +179,7 @@ class Handler implements MessageComponentInterface
         $this->authenticateConnection($connection, $channel, $messageArray);
 
         // Only log in debug mode to reduce I/O
-        if (config('app.debug')) {
+        if (self::$debug ??= (bool) config('app.debug')) {
             Log::channel('websocket')->debug('[' . $connection->socketId . ']@' . $channel->getName() . ' | ' . $payload);
         }
 
@@ -552,36 +555,35 @@ class Handler implements MessageComponentInterface
             return;
         }
 
-        // If it's already a string (JSON), try to parse for broadcast/whisper
-        if (is_string($data)) {
-            $bm = json_decode($data, true);
-
-            if (isset($bm['broadcast']) && $bm['broadcast']) {
-                $this->broadcast(
-                    $connection->app->id,
-                    $bm['data'] ?? null,
-                    $bm['event'] ?? null,
-                    $bm['channel'] ?? null,
-                    $bm['including_self'] ?? false,
-                    $connection
-                );
-                return;
-            }
-
-            if (isset($bm['whisper']) && $bm['whisper']) {
-                $this->whisper(
-                    $connection->app->id,
-                    $bm['data'] ?? null,
-                    $bm['event'] ?? null,
-                    $bm['socket_ids'] ?? [],
-                    $bm['channel'] ?? null,
-                );
-                return;
-            }
-
-            // Regular response
-            $connection->send($data);
+        // Prefix-based routing: B: = broadcast, W: = whisper, else regular response
+        // Avoids JSON decode overhead for regular responses (most common path)
+        if (str_starts_with($data, 'B:')) {
+            $bm = json_decode(substr($data, 2), true);
+            $this->broadcast(
+                $connection->app->id,
+                $bm['data'] ?? null,
+                $bm['event'] ?? null,
+                $bm['channel'] ?? null,
+                $bm['including_self'] ?? false,
+                $connection
+            );
+            return;
         }
+
+        if (str_starts_with($data, 'W:')) {
+            $bm = json_decode(substr($data, 2), true);
+            $this->whisper(
+                $connection->app->id,
+                $bm['data'] ?? null,
+                $bm['event'] ?? null,
+                $bm['socket_ids'] ?? [],
+                $bm['channel'] ?? null,
+            );
+            return;
+        }
+
+        // Regular response - send directly without JSON decode
+        $connection->send($data);
     }
 
     protected function handleMessageError(\Throwable $e): void
@@ -902,11 +904,22 @@ class Handler implements MessageComponentInterface
         PrivateChannel|Channel|PresenceChannel|null $channel,
         $message = []
     ) {
+        // Fast path: auth already resolved for this connection (skips cache read + DB query + cache write)
+        if (isset($connection->authLoaded)) {
+            if ($connection->user) {
+                Auth::login($connection->user);
+            }
+            $this->scheduleLogout();
+            return;
+        }
+
         $this->loadCachedAuth($connection, $channel);
         $this->ensureUserIsSet($connection, $channel);
         $this->updateAuthState($connection);
         $this->cacheAuthenticatedUser($connection);
         $this->scheduleLogout();
+
+        $connection->authLoaded = true;
     }
 
     protected function loadCachedAuth(ConnectionInterface $connection, $channel): void
@@ -958,7 +971,6 @@ class Handler implements MessageComponentInterface
 
         /** @var \App\Models\User */
         $user = Auth::user();
-        $user->refresh();
 
         $socketId = $connection->socketId;
 
@@ -1055,23 +1067,23 @@ class Handler implements MessageComponentInterface
         bool $including_self = false,
         $connection = null
     ): void {
-
         $channel = $this->channelManager->findOrCreate($appId, $channel);
 
-        $p = [
-            'event' => ($event ?? $event),
+        // Pre-encode once for all connections
+        $encoded = json_encode([
+            'event' => $event,
             'data' => $payload,
             'channel' => $channel->getName(),
-        ];
+        ]);
 
         foreach ($channel->getConnections() as $channel_conection) {
             if ($channel_conection->socketId !== $connection->socketId) {
-                $channel_conection->send(json_encode($p));
+                $channel_conection->send($encoded);
             }
+        }
 
-            if ($including_self) {
-                $connection->send(json_encode($p));
-            }
+        if ($including_self) {
+            $connection->send($encoded);
         }
     }
 

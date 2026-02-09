@@ -44,11 +44,12 @@ class MockConnectionSocketPair implements ConnectionInterface
         bool $including_self = false,
     ): self {
         $data ??= [];
-        $data['broadcast'] = true;
         $data['channel'] ??= $channel;
         $data['including_self'] = $including_self;
 
-        return $this->send(json_encode($data));
+        // B: prefix for instant routing in parent (avoids JSON decode for regular responses)
+        $this->ipc->sendToParent('B:' . json_encode($data));
+        return $this;
     }
 
     /**
@@ -61,11 +62,12 @@ class MockConnectionSocketPair implements ConnectionInterface
         ?string $channel = null,
     ): self {
         $data ??= [];
-        $data['whisper'] = true;
         $data['channel'] ??= $channel;
         $data['socket_ids'] = $socketIds;
 
-        return $this->send(json_encode($data));
+        // W: prefix for instant routing in parent (avoids JSON decode for regular responses)
+        $this->ipc->sendToParent('W:' . json_encode($data));
+        return $this;
     }
 
     public function close(): void

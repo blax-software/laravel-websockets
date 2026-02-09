@@ -15,7 +15,6 @@ use Illuminate\Support\Facades\Log;
 class Controller
 {
     protected bool $isMockConnection;
-    protected MockConnectionSocketPair|null $mockConnectionClone = null;
 
     final public function __construct(
         protected ConnectionInterface $connection,
@@ -23,14 +22,7 @@ class Controller
         protected string $event,
         protected LocalChannelManager|RedisChannelManager $channelManager
     ) {
-        // Cache class check to avoid repeated get_class() calls (reflection is slow)
-        $connectionClass = get_class($connection);
-        $this->isMockConnection = $connectionClass === MockConnectionSocketPair::class;
-
-        // Pre-clone MockConnection once if needed (reuse across method calls)
-        if ($this->isMockConnection) {
-            $this->mockConnectionClone = clone $connection;
-        }
+        $this->isMockConnection = $connection instanceof MockConnectionSocketPair;
     }
 
     /**
@@ -167,11 +159,7 @@ class Controller
         // Pre-encode once (avoid repeated encoding)
         $encoded = json_encode($p);
 
-        if ($this->isMockConnection) {
-            $this->mockConnectionClone->send($encoded);
-        } else {
-            $this->connection->send($encoded);
-        }
+        $this->connection->send($encoded);
 
         return true;
     }
@@ -198,11 +186,7 @@ class Controller
         // Pre-encode once (avoid repeated encoding)
         $encoded = json_encode($p);
 
-        if ($this->isMockConnection) {
-            $this->mockConnectionClone->send($encoded);
-        } else {
-            $this->connection->send($encoded);
-        }
+        $this->connection->send($encoded);
 
         return true;
     }
@@ -240,14 +224,7 @@ class Controller
 
         Log::channel('websocket')->error('Send error: ' . @$p['data']['message'], $p);
 
-        // Pre-encode once (avoid repeated encoding)
-        $encoded = json_encode($p);
-
-        if ($this->isMockConnection) {
-            $this->mockConnectionClone->send($encoded);
-        } else {
-            $this->connection->send($encoded);
-        }
+        $this->connection->send(json_encode($p));
 
         return true;
     }
@@ -272,30 +249,27 @@ class Controller
             'channel' => $channel,
         ];
 
-        if (!$this->isMockConnection) {
-            if (! $channel) {
-                $this->error('Channel not found');
-                return;
+        if ($this->isMockConnection) {
+            $this->connection->broadcast($p, $channel, $including_self);
+            return;
+        }
+
+        // Direct broadcast (non-forked context, e.g. testing)
+        if (! $channel) {
+            $this->error('Channel not found');
+            return;
+        }
+
+        $encoded = json_encode($p);
+
+        foreach ($this->channel->getConnections() as $channel_conection) {
+            if ($channel_conection !== $this->connection) {
+                $channel_conection->send($encoded);
             }
+        }
 
-            // Pre-encode ONCE - massive improvement for 100+ connections
-            $encoded = json_encode($p);
-
-            foreach ($this->channel->getConnections() as $channel_conection) {
-                if ($channel_conection !== $this->connection) {
-                    $channel_conection->send($encoded);
-                }
-
-                if ($including_self) {
-                    $this->connection->send($encoded);
-                }
-            }
-        } else {
-            $this->mockConnectionClone->broadcast(
-                $p,
-                $channel,
-                $including_self
-            );
+        if ($including_self) {
+            $this->connection->send($encoded);
         }
     }
 
@@ -319,36 +293,28 @@ class Controller
             'channel' => $channel,
         ];
 
-        if (!$this->isMockConnection) {
-            // Pre-encode ONCE for all matching sockets
-            $encoded = json_encode($p);
-
-            // Use array_flip for O(1) lookup instead of O(n) in_array
-            $socketIdLookup = array_flip($socketIds);
-            $sentTo = [];
-
-            // Search ALL connections across ALL channels to find target socket IDs
-            // This is necessary because whisper targets specific sockets regardless of channel
-            $this->channelManager->getLocalConnections()->then(function ($connections) use ($socketIdLookup, $encoded, &$sentTo) {
-                foreach ($connections as $connection) {
-                    // Skip if already sent to this socket (can appear in multiple channels)
-                    if (isset($sentTo[$connection->socketId])) {
-                        continue;
-                    }
-
-                    if (isset($socketIdLookup[$connection->socketId])) {
-                        $connection->send($encoded);
-                        $sentTo[$connection->socketId] = true;
-                    }
-                }
-            });
-        } else {
-            $this->mockConnectionClone->whisper(
-                $p,
-                $socketIds,
-                $channel
-            );
+        if ($this->isMockConnection) {
+            $this->connection->whisper($p, $socketIds, $channel);
+            return;
         }
+
+        // Direct whisper (non-forked context, e.g. testing)
+        $encoded = json_encode($p);
+        $socketIdLookup = array_flip($socketIds);
+        $sentTo = [];
+
+        $this->channelManager->getLocalConnections()->then(function ($connections) use ($socketIdLookup, $encoded, &$sentTo) {
+            foreach ($connections as $connection) {
+                if (isset($sentTo[$connection->socketId])) {
+                    continue;
+                }
+
+                if (isset($socketIdLookup[$connection->socketId])) {
+                    $connection->send($encoded);
+                    $sentTo[$connection->socketId] = true;
+                }
+            }
+        });
     }
 
     private static function send_error(
