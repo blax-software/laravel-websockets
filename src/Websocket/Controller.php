@@ -91,7 +91,7 @@ class Controller
             }
 
             if (! method_exists($controllerClass, $method)) {
-                $controller->error($connection, $message, 'Event could not be handled');
+                $controller->error('Event could not be handled');
                 $controller->unboot();
                 return;
             }
