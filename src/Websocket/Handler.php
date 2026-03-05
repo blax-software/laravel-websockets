@@ -573,8 +573,47 @@ class Handler implements MessageComponentInterface
             return;
         }
 
-        // Prefix-based routing: B: = broadcast, W: = whisper, else regular response
+        // Prefix-based routing: C: = connection data, B: = broadcast, W: = whisper, else regular response
         // Avoids JSON decode overhead for regular responses (most common path)
+        if (str_starts_with($data, 'C:')) {
+            // Connection data operation from child process.
+            // Lets controllers set/clear/reset arbitrary properties on the
+            // parent's in-memory connection object via IPC.
+            $op = substr($data, 2);
+
+            if ($op === 'RESET') {
+                // Clear auth state
+                unset($connection->authLoaded);
+                $connection->user = null;
+
+                // Clear any custom connection data that was stored via C:SET
+                foreach (($connection->_connectionDataKeys ?? []) as $key => $_) {
+                    unset($connection->$key);
+                }
+                $connection->_connectionDataKeys = [];
+            } elseif (str_starts_with($op, 'SET:')) {
+                // C:SET:key:json_value
+                $rest = substr($op, 4);
+                $pos = strpos($rest, ':');
+                if ($pos !== false) {
+                    $key = substr($rest, 0, $pos);
+                    $value = json_decode(substr($rest, $pos + 1));
+                    $connection->$key = $value;
+                    $connection->_connectionDataKeys ??= [];
+                    $connection->_connectionDataKeys[$key] = true;
+                }
+            } elseif (str_starts_with($op, 'DEL:')) {
+                // C:DEL:key
+                $key = substr($op, 4);
+                unset($connection->$key);
+                if (isset($connection->_connectionDataKeys[$key])) {
+                    unset($connection->_connectionDataKeys[$key]);
+                }
+            }
+
+            return;
+        }
+
         if (str_starts_with($data, 'B:')) {
             $bm = json_decode(substr($data, 2), true);
             $this->broadcast(

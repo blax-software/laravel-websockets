@@ -76,6 +76,44 @@ class MockConnectionSocketPair implements ConnectionInterface
     }
 
     /**
+     * Reset all user-set connection state on the parent process.
+     *
+     * Clears auth state (user, authLoaded) and any custom connection data
+     * that was stored via setConnectionData(). Channels remain subscribed.
+     *
+     * Used after logout so the next WS message re-authenticates from Redis.
+     */
+    public function resetConnection(): void
+    {
+        $this->ipc->sendToParent('C:RESET');
+    }
+
+    /**
+     * Store a custom key-value pair on the parent's connection object.
+     *
+     * The value is JSON-serialized over IPC and set as $connection->$key
+     * on the parent process. Readable by any subsequent controller via
+     * $this->connection->$key (proxied through __get).
+     */
+    public function setConnectionData(string $key, mixed $value): void
+    {
+        // Update local child copy for immediate reads within this request
+        $this->realConnection->$key = $value;
+
+        // Signal parent to persist the change
+        $this->ipc->sendToParent('C:SET:' . $key . ':' . json_encode($value));
+    }
+
+    /**
+     * Remove a custom key from the parent's connection object.
+     */
+    public function clearConnectionData(string $key): void
+    {
+        unset($this->realConnection->$key);
+        $this->ipc->sendToParent('C:DEL:' . $key);
+    }
+
+    /**
      * Magic getter to proxy properties from real connection.
      */
     public function __get(string $name): mixed
