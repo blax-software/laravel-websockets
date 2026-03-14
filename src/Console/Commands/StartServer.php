@@ -75,6 +75,13 @@ class StartServer extends Command
     protected $restartSoftShutdown = false;
 
     /**
+     * The last steer signal timestamp.
+     *
+     * @var int|null
+     */
+    protected $lastSteer = null;
+
+    /**
      * Initialize the command.
      *
      * @return void
@@ -147,6 +154,10 @@ class StartServer extends Command
             \Log::channel('websocket')->debug('Configuring restart timer...');
             $this->configureRestartTimer();
             \Log::channel('websocket')->debug('Restart timer configured');
+
+            \Log::channel('websocket')->debug('Configuring steer timer...');
+            $this->configureSteerTimer();
+            \Log::channel('websocket')->debug('Steer timer configured');
 
             \Log::channel('websocket')->debug('Configuring routes...');
             $this->configureRoutes();
@@ -288,6 +299,84 @@ class StartServer extends Command
         \Log::channel('websocket')->debug('Registering WebSocket routes...');
         WebSocketRouter::registerRoutes();
         \Log::channel('websocket')->debug('WebSocket routes registered');
+    }
+
+    /**
+     * Configure the timer that polls for steer signals (cache:clear, etc.).
+     *
+     * @return void
+     */
+    public function configureSteerTimer(): void
+    {
+        $steerData = Cache::store('file')->get('blax:websockets:steer');
+        $this->lastSteer = $steerData['time'] ?? null;
+
+        \Log::channel('websocket')->debug('Steer timer configured', [
+            'initial_steer_time' => $this->lastSteer,
+        ]);
+
+        $this->loop->addPeriodicTimer(5, function () {
+            $steerData = Cache::store('file')->get('blax:websockets:steer');
+            $currentSteer = $steerData['time'] ?? null;
+
+            if ($currentSteer !== null && $currentSteer !== $this->lastSteer) {
+                $action = $steerData['action'] ?? null;
+                $this->lastSteer = $currentSteer;
+
+                \Log::channel('websocket')->info("Steer signal received: {$action}");
+                $this->handleSteerAction($action);
+            }
+        });
+    }
+
+    /**
+     * Execute a steer action received via the cache signal.
+     */
+    protected function handleSteerAction(?string $action): void
+    {
+        switch ($action) {
+            case 'cache:clear':
+                $this->steerCacheClear();
+                break;
+
+            case 'restart':
+                $this->restartSoftShutdown = false;
+                $this->triggerShutdown(true);
+                break;
+
+            case 'restart:soft':
+                $this->restartSoftShutdown = true;
+                $this->triggerShutdown(true);
+                break;
+
+            default:
+                \Log::channel('websocket')->warning("Unknown steer action: {$action}");
+        }
+    }
+
+    /**
+     * Clear OPcache and the controller resolution cache so the running
+     * server picks up new code from disk without a full restart.
+     */
+    protected function steerCacheClear(): void
+    {
+        $cleared = [];
+
+        // 1. Reset OPcache — forces PHP to recompile files from disk
+        if (function_exists('opcache_reset')) {
+            opcache_reset();
+            $cleared[] = 'opcache';
+        }
+
+        // 2. Clear controller resolver cache so new/changed controllers are discovered
+        if (class_exists(\BlaxSoftware\LaravelWebSockets\Websocket\ControllerResolver::class)) {
+            \BlaxSoftware\LaravelWebSockets\Websocket\ControllerResolver::clearCache();
+            \BlaxSoftware\LaravelWebSockets\Websocket\ControllerResolver::preload();
+            $cleared[] = 'controllers';
+        }
+
+        \Log::channel('websocket')->info('Steer cache:clear executed', ['cleared' => $cleared]);
+        $this->line('Cache cleared: ' . implode(', ', $cleared));
     }
 
     /**
