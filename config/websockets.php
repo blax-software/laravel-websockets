@@ -26,6 +26,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Max Concurrent Children (Fork Limit)
+    |--------------------------------------------------------------------------
+    |
+    | Each WebSocket message is processed in a forked child process.
+    | Each child may open its own MySQL connection. To prevent exhausting
+    | MySQL's max_connections under message bursts, this limits how many
+    | child processes can run concurrently.
+    |
+    | Messages arriving when the limit is reached are queued in memory
+    | and processed as child slots free up. This provides backpressure
+    | instead of crashing MySQL.
+    |
+    | Recommended: Set to ~60-70% of MySQL's max_connections minus
+    | connections used by PHP-FPM, queue workers, and other services.
+    | For MySQL default of 151: 50 is a safe default.
+    |
+    */
+    'max_concurrent_children' => (int) env('WEBSOCKET_MAX_CHILDREN', 50),
+
+    /*
+    |--------------------------------------------------------------------------
     | Broadcast Socket Settings
     |--------------------------------------------------------------------------
     |

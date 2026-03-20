@@ -12,7 +12,7 @@ class SteerServer extends Command
 
     protected $signature = 'websocket:steer
         {action : The action to send (cache:clear, restart, restart:soft)}
-        {--cache-driver=file : The cache driver to use for signaling.}';
+        {--cache-driver= : The cache driver to use for signaling (defaults to app cache driver).}';
 
     protected $description = 'Send a steering command to the running WebSocket server.';
 
@@ -37,7 +37,7 @@ class SteerServer extends Command
             return self::FAILURE;
         }
 
-        $store = $this->option('cache-driver') ?: 'file';
+        $store = $this->option('cache-driver') ?: config('cache.default');
 
         Cache::store($store)->forever('blax:websockets:steer', [
             'action' => $action,

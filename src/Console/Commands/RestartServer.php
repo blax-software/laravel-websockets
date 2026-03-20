@@ -16,7 +16,7 @@ class RestartServer extends Command
      * @var string
      */
     protected $signature = 'websockets:restart
-        {--cache-driver=file : The cache driver to use for the server. Redis will not work due to concurrency issues.}
+        {--cache-driver= : The cache driver to use for signaling (defaults to app cache driver).}
         {--soft : Use soft shutdown (gracefully close connections) instead of hard shutdown.}';
 
     /**
@@ -40,8 +40,9 @@ class RestartServer extends Command
 
         \Log::channel('websocket')->info('WebSocket restart server command called ...');
 
-        config(['cache.default' => $this->option('cache-driver', 'file')]);
-        \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $this->option('cache-driver', 'file')]);
+        $cacheDriver = $this->option('cache-driver') ?: config('cache.default');
+        config(['cache.default' => $cacheDriver]);
+        \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $cacheDriver]);
 
         $restartData = [
             'time' => $this->currentTime(),

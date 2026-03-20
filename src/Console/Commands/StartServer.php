@@ -82,6 +82,13 @@ class StartServer extends Command
     protected $lastSteer = null;
 
     /**
+     * The resolved cache store name for signaling.
+     *
+     * @var string
+     */
+    protected string $cacheStore = 'file';
+
+    /**
      * Initialize the command.
      *
      * @return void
@@ -129,6 +136,7 @@ class StartServer extends Command
             // (2) child processes purge inherited Redis connections and get fresh ones
             $cacheDriver = $this->option('cache-driver') ?: config('cache.default');
             config(['cache.default' => $cacheDriver]);
+            $this->cacheStore = $cacheDriver;
             \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $cacheDriver]);
 
             WebsocketService::resetAllTracking();
@@ -308,7 +316,7 @@ class StartServer extends Command
      */
     public function configureSteerTimer(): void
     {
-        $steerData = Cache::store('file')->get('blax:websockets:steer');
+        $steerData = Cache::store($this->cacheStore)->get('blax:websockets:steer');
         $this->lastSteer = $steerData['time'] ?? null;
 
         \Log::channel('websocket')->debug('Steer timer configured', [
@@ -316,7 +324,7 @@ class StartServer extends Command
         ]);
 
         $this->loop->addPeriodicTimer(5, function () {
-            $steerData = Cache::store('file')->get('blax:websockets:steer');
+            $steerData = Cache::store($this->cacheStore)->get('blax:websockets:steer');
             $currentSteer = $steerData['time'] ?? null;
 
             if ($currentSteer !== null && $currentSteer !== $this->lastSteer) {
@@ -751,7 +759,7 @@ class StartServer extends Command
      */
     protected function getLastRestartData()
     {
-        $data = Cache::get('blax:websockets:restart');
+        $data = Cache::store($this->cacheStore)->get('blax:websockets:restart');
 
         // Handle legacy format (just timestamp) for backwards compatibility
         if (is_numeric($data)) {
