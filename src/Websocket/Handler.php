@@ -146,8 +146,13 @@ class Handler implements MessageComponentInterface
             return false;
         }
 
-        // Update connection timestamp directly on connection object (no promise chain)
-        $connection->lastPongedAt = time();
+        // Update connection pong timestamp in BOTH local memory AND Redis sorted set.
+        // This is critical: removeObsoleteConnections() checks the Redis set score,
+        // so a direct $connection->lastPongedAt assignment alone is insufficient —
+        // the Redis-based cleanup would still unsubscribe channels after 120s.
+        // connectionPonged() is async (returns a Promise resolved by the event loop),
+        // so this does not block the ping response.
+        $this->channelManager->connectionPonged($connection);
 
         // Send pre-encoded pong response immediately
         $connection->send(self::$PONG_RESPONSE);
@@ -181,10 +186,9 @@ class Handler implements MessageComponentInterface
         MessageInterface $message,
         string $payload
     ): void {
-        // Any received message proves the client is alive — update pong timestamp
-        // to prevent removeObsoleteConnections() from unsubscribing active connections.
-        // This is critical because heartbeat pings with unique suffixes (e.g. pusher.ping[abc])
-        // bypass tryHandlePingFast() and handlePusherEvent() doesn't call connectionPonged().
+        // Any received message proves the client is alive — update local pong timestamp.
+        // This is a safety net for LocalChannelManager::removeObsoleteConnections().
+        // The primary Redis score update happens in tryHandlePingFast() via connectionPonged().
         $connection->lastPongedAt = time();
 
         // Set remote address once (moved from per-message to reduce overhead)
@@ -322,8 +326,11 @@ class Handler implements MessageComponentInterface
             return;
         }
 
-        // Initialize lastPongedAt with unix timestamp (faster than Carbon)
-        $connection->lastPongedAt = time();
+        // Register connection pong in both local memory and Redis sorted set.
+        // The Redis score is checked by removeObsoleteConnections() every 10s.
+        // Without this, the connection wouldn't have a Redis score until the
+        // first channel subscription, leaving a window for stale removal.
+        $this->channelManager->connectionPonged($connection);
 
         $this->channelManager->subscribeToApp($connection->app->id);
 
