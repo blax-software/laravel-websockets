@@ -181,6 +181,12 @@ class Handler implements MessageComponentInterface
         MessageInterface $message,
         string $payload
     ): void {
+        // Any received message proves the client is alive — update pong timestamp
+        // to prevent removeObsoleteConnections() from unsubscribing active connections.
+        // This is critical because heartbeat pings with unique suffixes (e.g. pusher.ping[abc])
+        // bypass tryHandlePingFast() and handlePusherEvent() doesn't call connectionPonged().
+        $connection->lastPongedAt = time();
+
         // Set remote address once (moved from per-message to reduce overhead)
         if (isset($connection->remoteAddress)) {
             request()->server->set('REMOTE_ADDR', $connection->remoteAddress);
