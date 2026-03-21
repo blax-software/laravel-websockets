@@ -51,7 +51,9 @@ class PromiseResolver implements PromiseInterface
             $this->promise, $this->loop
         );
 
-        $result = call_user_func($onFulfilled, $result);
+        if ($onFulfilled !== null) {
+            $result = call_user_func($onFulfilled, $result);
+        }
 
         return $result instanceof PromiseInterface
             ? new self($result, $this->loop)

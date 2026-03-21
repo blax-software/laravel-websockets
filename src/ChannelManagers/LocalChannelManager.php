@@ -50,6 +50,13 @@ class LocalChannelManager implements ChannelManager
     protected $acceptsNewConnections = true;
 
     /**
+     * The event loop instance.
+     *
+     * @var \React\EventLoop\LoopInterface
+     */
+    public $loop;
+
+    /**
      * The ArrayStore instance of locks.
      *
      * @var \Illuminate\Cache\ArrayStore
@@ -80,6 +87,7 @@ class LocalChannelManager implements ChannelManager
      */
     public function __construct(LoopInterface $loop, $factoryClass = null)
     {
+        $this->loop = $loop;
         $this->store = new ArrayStore;
         $this->serverId = Str::uuid()->toString();
     }

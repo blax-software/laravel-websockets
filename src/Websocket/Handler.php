@@ -152,7 +152,13 @@ class Handler implements MessageComponentInterface
         // the Redis-based cleanup would still unsubscribe channels after 120s.
         // connectionPonged() is async (returns a Promise resolved by the event loop),
         // so this does not block the ping response.
-        $this->channelManager->connectionPonged($connection);
+        $this->channelManager->connectionPonged($connection)
+            ->then(null, function (\Throwable $e) use ($connection) {
+                // If the Redis pong update fails, the connection will appear stale
+                // and removeObsoleteConnections() will unsubscribe its channels.
+                // Log this so we can diagnose connection drops.
+                Log::channel('websocket')->error('connectionPonged failed for ' . ($connection->socketId ?? '?') . ': ' . $e->getMessage());
+            });
 
         // Send pre-encoded pong response immediately
         $connection->send(self::$PONG_RESPONSE);
