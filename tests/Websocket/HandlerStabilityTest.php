@@ -275,7 +275,8 @@ class HandlerStabilityTest extends TestCase
             if ($mixedCount % 10 === 0) {
                 $mixedPongs += collect($connection->sentData)->where('event', 'pusher.pong')->count();
 
-                $errors = collect($connection->sentData)->filter(fn ($e) =>
+                $errors = collect($connection->sentData)->filter(
+                    fn($e) =>
                     isset($e['event']) && str_contains($e['event'], ':error')
                 );
                 $this->assertCount(0, $errors, 'Phase 3: No error events during valid mixed messages');
@@ -503,10 +504,12 @@ class HandlerStabilityTest extends TestCase
         $good1->resetEvents();
         $good2->resetEvents();
         $this->pusherServer->onMessage($good1, new Mocks\Message([
-            'event' => 'pusher.ping', 'data' => new \stdClass(),
+            'event' => 'pusher.ping',
+            'data' => new \stdClass(),
         ]));
         $this->pusherServer->onMessage($good2, new Mocks\Message([
-            'event' => 'pusher.ping', 'data' => new \stdClass(),
+            'event' => 'pusher.ping',
+            'data' => new \stdClass(),
         ]));
         $good1->assertSentEvent('pusher.pong');
         $good2->assertSentEvent('pusher.pong');
@@ -586,10 +589,12 @@ class HandlerStabilityTest extends TestCase
         $conn2->resetEvents();
         $conn3->resetEvents();
         $this->pusherServer->onMessage($conn2, new Mocks\Message([
-            'event' => 'pusher.ping', 'data' => new \stdClass(),
+            'event' => 'pusher.ping',
+            'data' => new \stdClass(),
         ]));
         $this->pusherServer->onMessage($conn3, new Mocks\Message([
-            'event' => 'pusher.ping', 'data' => new \stdClass(),
+            'event' => 'pusher.ping',
+            'data' => new \stdClass(),
         ]));
         $conn2->assertSentEvent('pusher.pong');
         $conn3->assertSentEvent('pusher.pong');
@@ -615,10 +620,12 @@ class HandlerStabilityTest extends TestCase
         $survivor1->resetEvents();
         $survivor2->resetEvents();
         $this->pusherServer->onMessage($survivor1, new Mocks\Message([
-            'event' => 'pusher.ping', 'data' => new \stdClass(),
+            'event' => 'pusher.ping',
+            'data' => new \stdClass(),
         ]));
         $this->pusherServer->onMessage($survivor2, new Mocks\Message([
-            'event' => 'pusher.ping', 'data' => new \stdClass(),
+            'event' => 'pusher.ping',
+            'data' => new \stdClass(),
         ]));
         $survivor1->assertSentEvent('pusher.pong');
         $survivor2->assertSentEvent('pusher.pong');
@@ -650,7 +657,8 @@ class HandlerStabilityTest extends TestCase
 
         $goodConn->resetEvents();
         $this->pusherServer->onMessage($goodConn, new Mocks\Message([
-            'event' => 'pusher.ping', 'data' => new \stdClass(),
+            'event' => 'pusher.ping',
+            'data' => new \stdClass(),
         ]));
         $goodConn->assertSentEvent('pusher.pong');
 
