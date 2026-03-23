@@ -621,6 +621,13 @@ class Handler implements MessageComponentInterface
                 }
             }
 
+            // Flush Sentry before the child exits so captured events are actually sent.
+            // Without this, events from report()/captureException() may be lost because
+            // the child calls exit(0) before the async transport can dispatch them.
+            if (app()->bound('sentry')) {
+                app('sentry')->flush();
+            }
+
             $ipc->closeChild();
             exit(0);
         }
