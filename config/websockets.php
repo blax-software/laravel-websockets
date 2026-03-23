@@ -43,7 +43,7 @@ return [
     | For MySQL default of 151: 50 is a safe default.
     |
     */
-    'max_concurrent_children' => (int) env('WEBSOCKET_MAX_CHILDREN', 50),
+    'max_concurrent_children' => (int) env('WEBSOCKET_MAX_CHILDREN', 30),
 
     /*
     |--------------------------------------------------------------------------

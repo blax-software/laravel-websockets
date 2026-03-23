@@ -9,8 +9,10 @@ use BlaxSoftware\LaravelWebSockets\ChannelManagers\RedisChannelManager;
 use BlaxSoftware\LaravelWebSockets\Channels\Channel;
 use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
-use Ratchet\ConnectionInterface;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Laravel\Sanctum\PersonalAccessToken;
+use Ratchet\ConnectionInterface;
 
 class Controller
 {
@@ -85,9 +87,31 @@ class Controller
             }
 
             if (($controller->need_auth ?? true) && ! $connection->user) {
-                $controller->error('Unauthorized');
-                $controller->unboot();
-                return;
+                // Self-heal: the parent process may have a stale DB connection that
+                // can't find newly created tokens. The child process has a fresh DB
+                // connection (reconnected after fork), so try to authenticate here.
+                $authtoken = @$message['data']['authtoken'] ?? null;
+                if ($authtoken) {
+                    try {
+                        $tokenRecord = PersonalAccessToken::findToken($authtoken);
+                        if ($tokenRecord?->tokenable) {
+                            $connection->user = $tokenRecord->tokenable;
+                            Auth::login($connection->user);
+                            // Clear parent's stale auth cache so it re-authenticates
+                            if ($connection instanceof MockConnectionSocketPair) {
+                                $connection->clearConnectionData('authLoaded');
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        // Auth self-heal failed, fall through to Unauthorized
+                    }
+                }
+
+                if (! $connection->user) {
+                    $controller->error('Unauthorized');
+                    $controller->unboot();
+                    return;
+                }
             }
 
             if (! method_exists($controllerClass, $method)) {

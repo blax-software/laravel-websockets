@@ -616,16 +616,34 @@ class Handler implements MessageComponentInterface
                     ]);
                 }
 
-                if (app()->bound('sentry')) {
-                    app('sentry')->captureException($e);
+                try {
+                    if (app()->bound('sentry')) {
+                        app('sentry')->captureException($e);
+                    }
+                } catch (\Throwable $sentryError) {
+                    // Sentry capture failed (possibly also a DB issue), ignore
                 }
             }
 
             // Flush Sentry before the child exits so captured events are actually sent.
             // Without this, events from report()/captureException() may be lost because
             // the child calls exit(0) before the async transport can dispatch them.
-            if (app()->bound('sentry')) {
-                app('sentry')->flush();
+            try {
+                if (app()->bound('sentry')) {
+                    app('sentry')->flush();
+                }
+            } catch (\Throwable $e) {
+                // Sentry flush failed, continue with cleanup
+            }
+
+            // Explicitly close the MySQL connection before exit.
+            // Relying on exit(0) to close the FD is not instant — MySQL may keep
+            // the connection slot occupied until TCP cleanup completes.
+            // Under burst load this causes "Too many connections" errors.
+            try {
+                DB::disconnect();
+            } catch (\Throwable $e) {
+                // Disconnect failed, OS will clean up on exit
             }
 
             $ipc->closeChild();
@@ -683,8 +701,8 @@ class Handler implements MessageComponentInterface
 
     /**
      * Execute the controller with DB connection resilience.
-     * If the first attempt fails with a DB connection error (e.g., "Too many connections",
-     * "server has gone away"), waits briefly and retries once with a fresh connection.
+     * If an attempt fails with a DB connection error (e.g., "Too many connections",
+     * "server has gone away"), retries with exponential backoff up to 2 times.
      */
     protected function executeControllerWithDbResilience(
         $mock,
@@ -692,36 +710,51 @@ class Handler implements MessageComponentInterface
         array $message,
         ChannelManager $channelManager
     ): void {
-        try {
-            Controller::controll_message($mock, $channel, $message, $channelManager);
-        } catch (\Throwable $e) {
-            if (!$this->isDbConnectionError($e)) {
-                throw $e;
-            }
+        $maxRetries = 2;
+        $lastException = null;
 
-            // DB connection error — wait briefly for connections to free up, then retry
-            Log::channel('websocket')->warning('DB connection error, retrying after 500ms', [
-                'error' => $e->getMessage(),
-                'event' => $message['event'] ?? 'unknown',
-            ]);
-
-            usleep(500_000); // 500ms backoff
-
-            // Force a completely fresh DB connection
+        for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
             try {
-                DB::disconnect();
-                DB::reconnect();
-            } catch (\Throwable $reconnectError) {
-                // If reconnect also fails, throw the original error
-                Log::channel('websocket')->error('DB reconnect failed after retry', [
-                    'error' => $reconnectError->getMessage(),
-                ]);
-                throw $e;
-            }
+                if ($attempt > 0) {
+                    // Force a completely fresh DB connection before retry
+                    try {
+                        DB::disconnect();
+                        DB::reconnect();
+                    } catch (\Throwable $reconnectError) {
+                        Log::channel('websocket')->error('DB reconnect failed on retry attempt ' . $attempt, [
+                            'error' => $reconnectError->getMessage(),
+                        ]);
+                        throw $lastException;
+                    }
+                }
 
-            // Retry the controller execution once
-            Controller::controll_message($mock, $channel, $message, $channelManager);
+                Controller::controll_message($mock, $channel, $message, $channelManager);
+                return; // Success
+            } catch (\Throwable $e) {
+                if (!$this->isDbConnectionError($e)) {
+                    throw $e;
+                }
+
+                $lastException = $e;
+
+                if ($attempt < $maxRetries) {
+                    // Exponential backoff: 500ms, 1500ms
+                    $backoffMs = 500 * ($attempt + 1);
+                    Log::channel('websocket')->warning('DB connection error, retry ' . ($attempt + 1) . '/' . $maxRetries . ' after ' . $backoffMs . 'ms', [
+                        'error' => $e->getMessage(),
+                        'event' => $message['event'] ?? 'unknown',
+                    ]);
+                    usleep($backoffMs * 1000);
+                }
+            }
         }
+
+        // All retries exhausted
+        Log::channel('websocket')->error('DB connection error persisted after ' . $maxRetries . ' retries', [
+            'error' => $lastException?->getMessage(),
+            'event' => $message['event'] ?? 'unknown',
+        ]);
+        throw $lastException;
     }
 
     /**
