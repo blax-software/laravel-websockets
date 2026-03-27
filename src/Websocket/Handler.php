@@ -146,17 +146,22 @@ class Handler implements MessageComponentInterface
             return false;
         }
 
-        // Update connection pong timestamp in BOTH local memory AND Redis sorted set.
-        // This is critical: removeObsoleteConnections() checks the Redis set score,
-        // so a direct $connection->lastPongedAt assignment alone is insufficient —
-        // the Redis-based cleanup would still unsubscribe channels after 120s.
-        // connectionPonged() is async (returns a Promise resolved by the event loop),
-        // so this does not block the ping response.
+        // ALWAYS update local pong timestamp first — this is the ground truth
+        // that proves the connection is alive. Without this, if the Redis
+        // connectionPonged() call below fails, parent::connectionPonged()
+        // (chained after Redis) never runs, and the local
+        // removeObsoleteConnections() also considers the connection stale.
+        $connection->lastPongedAt = time();
+
+        // Also update Redis sorted set score so the Redis-based
+        // removeObsoleteConnections() doesn't consider this connection stale.
+        // This is async and does not block the pong response.
         $this->channelManager->connectionPonged($connection)
             ->then(null, function (\Throwable $e) use ($connection) {
-                // If the Redis pong update fails, the connection will appear stale
-                // and removeObsoleteConnections() will unsubscribe its channels.
-                // Log this so we can diagnose connection drops.
+                // Redis pong update failed — the local lastPongedAt is still fresh,
+                // so the local cleanup won't remove this connection. However the
+                // Redis-based cleanup may still see a stale score. This is handled
+                // by cross-checking local connection liveness in removeObsoleteConnections().
                 Log::channel('websocket')->error('connectionPonged failed for ' . ($connection->socketId ?? '?') . ': ' . $e->getMessage());
             });
 
@@ -352,6 +357,19 @@ class Handler implements MessageComponentInterface
         $isUnsubscribe = $event === 'pusher:unsubscribe' || $event === 'pusher.unsubscribe';
 
         if (!$channel?->hasConnection($connection) && !$isUnsubscribe) {
+            // The connection may have been removed from Channel::$connections by
+            // removeObsoleteConnections() (Redis stale score race) while the socket
+            // is still alive. If Handler::$channel_connections still tracks it, the
+            // connection was legitimately subscribed — silently re-subscribe instead
+            // of returning an error to the client.
+            $channelName = $channel?->getName();
+            if ($channelName && isset($this->channel_connections[$channelName][$connection->socketId])) {
+                // Re-add to Channel::$connections transparently
+                $channel->saveConnection($connection);
+                Log::channel('websocket')->info('Auto-resubscribed connection ' . $connection->socketId . ' to channel ' . $channelName);
+                return false; // Allow the message to proceed
+            }
+
             $connection->send(json_encode([
                 'event' => $event . ':error',
                 'data' => [

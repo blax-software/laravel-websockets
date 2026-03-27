@@ -316,12 +316,49 @@ class ChannelManager extends LocalChannelManager
         try {
             $lock->get(function () {
                 $this->getConnectionsFromSet(0, (int) now()->subMinutes(2)->format('U'))
-                    ->then(function ($connections) {
-                        foreach ($connections as $socketId => $appId) {
-                            $connection = $this->fakeConnectionForApp($appId, $socketId);
+                    ->then(function ($staleRedisConnections) {
+                        // Cross-check against local connection state before unsubscribing.
+                        // The Redis sorted set score may be stale (e.g., connectionPonged()
+                        // Redis call failed) while the connection is still alive locally
+                        // with a fresh lastPongedAt. Only unsubscribe connections that are
+                        // ALSO stale locally, or not present locally at all.
+                        $this->getLocalConnections()->then(function ($localConnections) use ($staleRedisConnections) {
+                            // Build socketId → connection lookup from local connections
+                            $localBySocketId = [];
+                            foreach ($localConnections as $conn) {
+                                if (isset($conn->socketId)) {
+                                    $localBySocketId[$conn->socketId] = $conn;
+                                }
+                            }
 
-                            $this->unsubscribeFromAllChannels($connection);
-                        }
+                            $now = time();
+
+                            foreach ($staleRedisConnections as $socketId => $appId) {
+                                // If the connection exists locally with a fresh pong, skip it.
+                                // The local lastPongedAt is the ground truth — it's updated
+                                // directly on every ping and every message, regardless of Redis.
+                                if (isset($localBySocketId[$socketId])) {
+                                    $localConn = $localBySocketId[$socketId];
+                                    $lastPong = $localConn->lastPongedAt ?? 0;
+                                    if (is_object($lastPong)) {
+                                        $age = $lastPong->diffInSeconds(\Carbon\Carbon::now());
+                                    } else {
+                                        $age = $now - (int) $lastPong;
+                                    }
+
+                                    if ($age <= 120) {
+                                        // Connection is alive locally — just refresh the Redis score
+                                        // so the next cleanup cycle doesn't flag it again.
+                                        $this->addConnectionToSet($localConn, Carbon::now());
+                                        continue;
+                                    }
+                                }
+
+                                // Connection is either not local (other server) or genuinely stale
+                                $fakeConn = $this->fakeConnectionForApp($appId, $socketId);
+                                $this->unsubscribeFromAllChannels($fakeConn);
+                            }
+                        });
                     });
             });
 
