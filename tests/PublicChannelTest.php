@@ -106,7 +106,8 @@ class PublicChannelTest extends TestCase
 
                 foreach ($connections as $connection) {
                     $this->assertInstanceOf(
-                        ConnectionInterface::class, $connection
+                        ConnectionInterface::class,
+                        $connection
                     );
                 }
             });
@@ -166,7 +167,10 @@ class PublicChannelTest extends TestCase
         $channel = $this->channelManager->find('1234', 'public-channel');
 
         $channel->broadcastToEveryoneExcept(
-            $message->getPayloadAsObject(), $connection->socketId, '1234', true
+            $message->getPayloadAsObject(),
+            $connection->socketId,
+            '1234',
+            true
         );
 
         $receiver->assertSentEvent('some-event', $message->getPayloadAsArray());

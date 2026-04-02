@@ -126,7 +126,8 @@ class PrivateChannelTest extends TestCase
 
                 foreach ($connections as $connection) {
                     $this->assertInstanceOf(
-                        ConnectionInterface::class, $connection
+                        ConnectionInterface::class,
+                        $connection
                     );
                 }
             });
@@ -186,7 +187,10 @@ class PrivateChannelTest extends TestCase
         $channel = $this->channelManager->find('1234', 'private-channel');
 
         $channel->broadcastToEveryoneExcept(
-            $message->getPayloadAsObject(), $connection->socketId, '1234', true
+            $message->getPayloadAsObject(),
+            $connection->socketId,
+            '1234',
+            true
         );
 
         $receiver->assertSentEvent('some-event', $message->getPayloadAsArray());
@@ -200,5 +204,4 @@ class PrivateChannelTest extends TestCase
                 $message->getPayload(),
             ]);
     }
-
 }
