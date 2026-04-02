@@ -2,10 +2,6 @@
 
 namespace BlaxSoftware\LaravelWebSockets\Test;
 
-use BlaxSoftware\LaravelWebSockets\API\TriggerEvent;
-use GuzzleHttp\Psr7\Request;
-use Illuminate\Http\JsonResponse;
-use Pusher\Pusher;
 use Ratchet\ConnectionInterface;
 
 class PublicChannelTest extends TestCase
@@ -21,7 +17,7 @@ class PublicChannelTest extends TestCase
             });
 
         $connection->assertSentEvent(
-            'pusher.connection_established',
+            'websocket.connection_established',
             [
                 'data' => json_encode([
                     'socket_id' => $connection->socketId,
@@ -31,7 +27,7 @@ class PublicChannelTest extends TestCase
         );
 
         $connection->assertSentEvent(
-            'pusher_internal:subscription_succeeded',
+            'websocket_internal.subscription_succeeded',
             ['channel' => 'public-channel']
         );
     }
@@ -47,13 +43,13 @@ class PublicChannelTest extends TestCase
             });
 
         $message = new Mocks\Message([
-            'event' => 'pusher.unsubscribe',
+            'event' => 'websocket.unsubscribe',
             'data' => [
                 'channel' => 'public-channel',
             ],
         ]);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
         $this->channelManager
             ->getGlobalConnectionsCount('1234', 'public-channel')
@@ -75,7 +71,7 @@ class PublicChannelTest extends TestCase
             'channel' => 'public-channel',
         ]);
 
-        $this->pusherServer->onMessage($rick, $message);
+        $this->wsHandler->onMessage($rick, $message);
 
         $rick->assertNotSentEvent('client-test-whisper');
         $morty->assertSentEvent('client-test-whisper', ['data' => [], 'channel' => 'public-channel']);
@@ -92,33 +88,10 @@ class PublicChannelTest extends TestCase
             'channel' => 'public-channel',
         ]);
 
-        $this->pusherServer->onMessage($rick, $message);
+        $this->wsHandler->onMessage($rick, $message);
 
         $rick->assertNotSentEvent('client-test-whisper');
         $morty->assertNotSentEvent('client-test-whisper');
-    }
-
-    public function test_statistics_get_collected_for_public_channels()
-    {
-        $rick = $this->newActiveConnection(['public-channel']);
-        $morty = $this->newActiveConnection(['public-channel']);
-
-        $this->statisticsCollector
-            ->getStatistics()
-            ->then(function ($statistics) {
-                $this->assertCount(1, $statistics);
-            });
-
-        $this->statisticsCollector
-            ->getAppStatistics('1234')
-            ->then(function ($statistic) {
-                $this->assertEquals([
-                    'peak_connections_count' => 2,
-                    'websocket_messages_count' => 2,
-                    'api_messages_count' => 0,
-                    'app_id' => '1234',
-                ], $statistic->toArray());
-            });
     }
 
     public function test_local_connections_for_public_channels()
@@ -206,134 +179,5 @@ class PublicChannelTest extends TestCase
                 $this->channelManager->getRedisKey('1234', 'public-channel'),
                 $message->getPayload(),
             ]);
-    }
-
-    public function test_it_fires_the_event_to_public_channel()
-    {
-        $this->startServer();
-
-        $requestPath = '/apps/1234/events';
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['public-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $response = $this->await($this->browser->post('http://localhost:4000'."{$requestPath}?{$queryString}"));
-
-        $this->assertSame([], json_decode((string) $response->getBody(), true));
-
-        $this->statisticsCollector
-            ->getAppStatistics('1234')
-            ->then(function ($statistic) {
-                $this->assertEquals([
-                    'peak_connections_count' => 0,
-                    'websocket_messages_count' => 0,
-                    'api_messages_count' => 1,
-                    'app_id' => '1234',
-                ], $statistic->toArray());
-            });
-    }
-
-    public function test_it_fires_event_across_servers_when_there_are_not_users_locally_for_public_channel()
-    {
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['public-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        if (method_exists($this->channelManager, 'getPublishClient')) {
-            $this->channelManager
-                ->getPublishClient()
-                ->assertCalledWithArgsCount(1, 'publish', [
-                    $this->channelManager->getRedisKey('1234', 'public-channel'),
-                    json_encode([
-                        'event' => 'some-event',
-                        'channel' => 'public-channel',
-                        'data' => json_encode(['some-data' => 'yes']),
-                        'appId' => '1234',
-                        'socketId' => null,
-                        'serverId' => $this->channelManager->getServerId(),
-                    ]),
-                ]);
-        }
-    }
-
-    public function test_it_fires_event_across_servers_when_there_are_users_locally_for_public_channel()
-    {
-        $wsConnection = $this->newActiveConnection(['public-channel']);
-
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['public-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        if (method_exists($this->channelManager, 'getPublishClient')) {
-            $this->channelManager
-                ->getPublishClient()
-                ->assertCalledWithArgsCount(1, 'publish', [
-                    $this->channelManager->getRedisKey('1234', 'public-channel'),
-                    json_encode([
-                        'event' => 'some-event',
-                        'channel' => 'public-channel',
-                        'data' => json_encode(['some-data' => 'yes']),
-                        'appId' => '1234',
-                        'socketId' => null,
-                        'serverId' => $this->channelManager->getServerId(),
-                    ]),
-                ]);
-        }
-
-        $wsConnection->assertSentEvent('some-event', [
-            'channel' => 'public-channel',
-            'data' => json_encode(['some-data' => 'yes']),
-        ]);
     }
 }

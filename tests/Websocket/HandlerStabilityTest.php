@@ -13,11 +13,12 @@ use Carbon\Carbon;
  *
  * Tests mirror the real-life frontend (Websocket.client.ts) behavior:
  * - Default channel: 'websocket' (public channel, the production default)
- * - Heartbeat: raw socket.send({ event: 'pusher.ping', data: {} }) every 20s
- * - Subscribe: pusher.subscribe with channel in data (dot format)
- * - Unsubscribe: pusher.unsubscribe (dot format — server only recognizes dots)
+ * - Heartbeat: raw socket.send({ event: 'websocket.ping', data: {} }) every 20s
+ * - Subscribe: websocket.subscribe with channel in data (dot format)
+ * - Unsubscribe: websocket.unsubscribe (dot format)
  * - Error recovery: "Subscription not established" → re-subscribe → retry
- * - Pusher events get :response suffix from handlePusherEvent()
+ * - Protocol events get :response suffix from handleProtocolEvent()
+ * - Server accepts any prefix (websocket.*, pusher.*, pusher:*, etc.)
  *
  * Groups (run subsets with --group / --exclude-group):
  *   @group stability       — Real-time tests using event loop timers (4+ minutes)
@@ -50,15 +51,15 @@ class HandlerStabilityTest extends TestCase
         parent::setUp();
 
         $this->pingMsg = new Mocks\Message([
-            'event' => 'pusher.ping',
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]);
         $this->subMsg = new Mocks\Message([
-            'event' => 'pusher.subscribe',
+            'event' => 'websocket.subscribe',
             'data' => ['channel' => 'websocket'],
         ]);
         $this->unsubMsg = new Mocks\Message([
-            'event' => 'pusher.unsubscribe',
+            'event' => 'websocket.unsubscribe',
             'data' => ['channel' => 'websocket'],
         ]);
     }
@@ -87,8 +88,8 @@ class HandlerStabilityTest extends TestCase
         $this->runOnlyOnLocalReplication();
 
         $connection = $this->newActiveConnection(['websocket']);
-        $connection->assertSentEvent('pusher.connection_established');
-        $connection->assertSentEvent('pusher_internal:subscription_succeeded');
+        $connection->assertSentEvent('websocket.connection_established');
+        $connection->assertSentEvent('websocket_internal.subscription_succeeded');
         $connection->resetEvents();
 
         $pingsSent = 0;
@@ -126,10 +127,10 @@ class HandlerStabilityTest extends TestCase
             // Client heartbeat every 20s
             if ($now >= $nextPing) {
                 $connection->resetEvents();
-                $this->pusherServer->onMessage($connection, $this->pingMsg);
+                $this->wsHandler->onMessage($connection, $this->pingMsg);
                 $pingsSent++;
 
-                $pong = collect($connection->sentData)->firstWhere('event', 'pusher.pong');
+                $pong = collect($connection->sentData)->firstWhere('event', 'websocket.pong');
                 $this->assertNotNull($pong, "Ping #{$pingsSent} at ~" . ($pingsSent * 20) . "s should get pong");
                 $pongsSeen++;
                 $nextPing = $now + 20;
@@ -182,7 +183,7 @@ class HandlerStabilityTest extends TestCase
         for ($cycle = 0; $cycle < 8; $cycle++) {
             $activeConnection->lastPongedAt = Carbon::now();
             $this->channelManager->updateConnectionInChannels($activeConnection);
-            $this->pusherServer->onMessage($activeConnection, $this->pingMsg);
+            $this->wsHandler->onMessage($activeConnection, $this->pingMsg);
         }
 
         // Stale: >120s without pong
@@ -215,7 +216,7 @@ class HandlerStabilityTest extends TestCase
     public function test_connection_stable_under_message_bombardment()
     {
         $connection = $this->newActiveConnection(['websocket']);
-        $connection->assertSentEvent('pusher.connection_established');
+        $connection->assertSentEvent('websocket.connection_established');
         $connection->resetEvents();
 
         // Phase 1: 10s of rapid pings (tryHandlePingFast hot path)
@@ -225,7 +226,7 @@ class HandlerStabilityTest extends TestCase
 
         while (microtime(true) - $phaseStart < 10) {
             for ($batch = 0; $batch < 50; $batch++) {
-                $this->pusherServer->onMessage($connection, $this->pingMsg);
+                $this->wsHandler->onMessage($connection, $this->pingMsg);
                 $totalPings++;
             }
             $totalPongs += count($connection->sentData);
@@ -242,8 +243,8 @@ class HandlerStabilityTest extends TestCase
         $subUnsubCycles = 0;
 
         while (microtime(true) - $phaseStart < 10) {
-            $this->pusherServer->onMessage($connection, $this->unsubMsg);
-            $this->pusherServer->onMessage($connection, $this->subMsg);
+            $this->wsHandler->onMessage($connection, $this->unsubMsg);
+            $this->wsHandler->onMessage($connection, $this->subMsg);
             $subUnsubCycles++;
             if ($subUnsubCycles % 25 === 0) {
                 $connection->resetEvents();
@@ -265,15 +266,15 @@ class HandlerStabilityTest extends TestCase
         $mixedPongs = 0;
 
         while (microtime(true) - $phaseStart < 10) {
-            $this->pusherServer->onMessage($connection, $this->pingMsg);
+            $this->wsHandler->onMessage($connection, $this->pingMsg);
             $mixedPings++;
-            $this->pusherServer->onMessage($connection, $this->subMsg);
-            $this->pusherServer->onMessage($connection, $this->unsubMsg);
-            $this->pusherServer->onMessage($connection, $this->subMsg);
+            $this->wsHandler->onMessage($connection, $this->subMsg);
+            $this->wsHandler->onMessage($connection, $this->unsubMsg);
+            $this->wsHandler->onMessage($connection, $this->subMsg);
             $mixedCount++;
 
             if ($mixedCount % 10 === 0) {
-                $mixedPongs += collect($connection->sentData)->where('event', 'pusher.pong')->count();
+                $mixedPongs += collect($connection->sentData)->where('event', 'websocket.pong')->count();
 
                 $errors = collect($connection->sentData)->filter(
                     fn($e) =>
@@ -285,14 +286,14 @@ class HandlerStabilityTest extends TestCase
                 gc_collect_cycles();
             }
         }
-        $mixedPongs += collect($connection->sentData)->where('event', 'pusher.pong')->count();
+        $mixedPongs += collect($connection->sentData)->where('event', 'websocket.pong')->count();
         $this->assertEquals($mixedPings, $mixedPongs, 'Phase 3: All pings should produce pongs');
         $this->assertGreaterThan(500, $mixedCount, 'Phase 3: Should process substantial mixed volume');
 
         // Final: connection still alive
         $connection->resetEvents();
-        $this->pusherServer->onMessage($connection, $this->pingMsg);
-        $connection->assertSentEvent('pusher.pong');
+        $this->wsHandler->onMessage($connection, $this->pingMsg);
+        $connection->assertSentEvent('websocket.pong');
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertTrue($channel->hasConnection($connection), 'Connection must survive 30s bombardment');
@@ -314,7 +315,7 @@ class HandlerStabilityTest extends TestCase
         }
 
         foreach ($connections as $conn) {
-            $conn->assertSentEvent('pusher.connection_established');
+            $conn->assertSentEvent('websocket.connection_established');
             $conn->resetEvents();
         }
 
@@ -324,7 +325,7 @@ class HandlerStabilityTest extends TestCase
 
         while (microtime(true) - $start < 10) {
             foreach ($connections as $conn) {
-                $this->pusherServer->onMessage($conn, $this->pingMsg);
+                $this->wsHandler->onMessage($conn, $this->pingMsg);
                 $totalPings++;
             }
             // Flush all connections to prevent OOM
@@ -345,7 +346,7 @@ class HandlerStabilityTest extends TestCase
 
         // Close first 50
         for ($i = 0; $i < 50; $i++) {
-            $this->pusherServer->onClose($connections[$i]);
+            $this->wsHandler->onClose($connections[$i]);
         }
         gc_collect_cycles();
 
@@ -356,7 +357,7 @@ class HandlerStabilityTest extends TestCase
 
         while (microtime(true) - $start2 < 5) {
             foreach ($remaining as $conn) {
-                $this->pusherServer->onMessage($conn, $this->pingMsg);
+                $this->wsHandler->onMessage($conn, $this->pingMsg);
                 $phase2Pings++;
             }
             foreach ($remaining as $conn) {
@@ -403,7 +404,7 @@ class HandlerStabilityTest extends TestCase
 
         while (microtime(true) - $start < 10) {
             foreach ($allConnections as $conn) {
-                $this->pusherServer->onMessage($conn, $this->pingMsg);
+                $this->wsHandler->onMessage($conn, $this->pingMsg);
                 $totalPings++;
             }
             foreach ($allConnections as $conn) {
@@ -416,7 +417,7 @@ class HandlerStabilityTest extends TestCase
 
         // Close all on 'blog' channel
         foreach ($connections['blog'] as $conn) {
-            $this->pusherServer->onClose($conn);
+            $this->wsHandler->onClose($conn);
         }
 
         // Other 4 channels fully operational — verify with ping
@@ -425,8 +426,8 @@ class HandlerStabilityTest extends TestCase
             $this->assertNotNull($channel, "{$channelName} should still exist");
             foreach ($connections[$channelName] as $idx => $conn) {
                 $conn->resetEvents();
-                $this->pusherServer->onMessage($conn, $this->pingMsg);
-                $conn->assertSentEvent('pusher.pong');
+                $this->wsHandler->onMessage($conn, $this->pingMsg);
+                $conn->assertSentEvent('websocket.pong');
                 $this->assertTrue(
                     $channel->hasConnection($conn),
                     "{$channelName} conn #{$idx} should be subscribed"
@@ -445,7 +446,7 @@ class HandlerStabilityTest extends TestCase
     public function test_rapid_connect_disconnect_cycles()
     {
         $permanentConnection = $this->newActiveConnection(['websocket']);
-        $permanentConnection->assertSentEvent('pusher.connection_established');
+        $permanentConnection->assertSentEvent('websocket.connection_established');
         $permanentConnection->resetEvents();
 
         $start = microtime(true);
@@ -453,13 +454,13 @@ class HandlerStabilityTest extends TestCase
 
         while (microtime(true) - $start < 15) {
             $temp = $this->newActiveConnection(['websocket']);
-            $this->pusherServer->onClose($temp);
+            $this->wsHandler->onClose($temp);
             $cycles++;
 
             // Every 100 cycles, verify permanent connection is alive
             if ($cycles % 100 === 0) {
-                $this->pusherServer->onMessage($permanentConnection, $this->pingMsg);
-                $permanentConnection->assertSentEvent('pusher.pong');
+                $this->wsHandler->onMessage($permanentConnection, $this->pingMsg);
+                $permanentConnection->assertSentEvent('websocket.pong');
                 $permanentConnection->resetEvents();
                 gc_collect_cycles();
             }
@@ -469,8 +470,8 @@ class HandlerStabilityTest extends TestCase
 
         // Final verification
         $permanentConnection->resetEvents();
-        $this->pusherServer->onMessage($permanentConnection, $this->pingMsg);
-        $permanentConnection->assertSentEvent('pusher.pong');
+        $this->wsHandler->onMessage($permanentConnection, $this->pingMsg);
+        $permanentConnection->assertSentEvent('websocket.pong');
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertNotNull($channel);
@@ -494,7 +495,7 @@ class HandlerStabilityTest extends TestCase
         $bad = $this->newActiveConnection(['websocket']);
 
         $bad->resetEvents();
-        $this->pusherServer->onMessage($bad, new Mocks\Message([
+        $this->wsHandler->onMessage($bad, new Mocks\Message([
             'event' => 'blog.show[abc123]',
             'data' => ['id' => '123'],
             'channel' => 'nonexistent-channel',
@@ -503,16 +504,16 @@ class HandlerStabilityTest extends TestCase
 
         $good1->resetEvents();
         $good2->resetEvents();
-        $this->pusherServer->onMessage($good1, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($good1, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $this->pusherServer->onMessage($good2, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($good2, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $good1->assertSentEvent('pusher.pong');
-        $good2->assertSentEvent('pusher.pong');
+        $good1->assertSentEvent('websocket.pong');
+        $good2->assertSentEvent('websocket.pong');
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertTrue($channel->hasConnection($good1));
@@ -528,16 +529,17 @@ class HandlerStabilityTest extends TestCase
     public function test_subscription_not_established_error_is_recoverable()
     {
         $connection = $this->newActiveConnection(['websocket']);
-        $connection->assertSentEvent('pusher.connection_established');
-        $connection->assertSentEvent('pusher_internal:subscription_succeeded');
+        $connection->assertSentEvent('websocket.connection_established');
+        $connection->assertSentEvent('websocket_internal.subscription_succeeded');
 
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
-            'event' => 'pusher.unsubscribe',
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
+            'event' => 'websocket.unsubscribe',
             'data' => ['channel' => 'websocket'],
         ]));
 
+        // After unsubscribe, sending a message should get :error
         $connection->resetEvents();
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
             'event' => 'pusher.custom[xyz789]',
             'data' => ['test' => 'recovery'],
             'channel' => 'websocket',
@@ -547,24 +549,25 @@ class HandlerStabilityTest extends TestCase
         $this->assertNotNull($errorEvent, 'Should get :error');
         $this->assertEquals('Subscription not established', $errorEvent['data']['message']);
 
+        // Re-subscribe and verify recovery
         $connection->resetEvents();
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
-            'event' => 'pusher.subscribe',
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
+            'event' => 'websocket.subscribe',
             'data' => ['channel' => 'websocket'],
         ]));
 
         $channel = $this->channelManager->find('1234', 'websocket');
-        $this->assertTrue($channel->hasConnection($connection), 'Re-subscribed');
+        $this->assertTrue($channel->hasConnection($connection), 'Re-subscribed after error');
 
+        // Protocol events should get :response again after recovery
         $connection->resetEvents();
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
-            'event' => 'pusher.custom[def456]',
-            'data' => ['test' => 'post-recovery'],
-            'channel' => 'websocket',
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
+            'event' => 'websocket.subscribe',
+            'data' => ['channel' => 'websocket'],
         ]));
 
-        $responseEvent = collect($connection->sentData)->firstWhere('event', 'pusher.custom[def456]:response');
-        $this->assertNotNull($responseEvent, 'Post-recovery should get :response');
+        $responseEvent = collect($connection->sentData)->firstWhere('event', 'websocket.subscribe:response');
+        $this->assertNotNull($responseEvent, 'Post-recovery subscribe should get :response');
         $this->assertEquals('Success', $responseEvent['data']['message']);
     }
 
@@ -580,24 +583,24 @@ class HandlerStabilityTest extends TestCase
         $conn3 = $this->newActiveConnection(['websocket']);
 
         $exception = new \BlaxSoftware\LaravelWebSockets\Server\Exceptions\UnknownAppKey('BadKey');
-        $this->pusherServer->onError($conn1, $exception);
+        $this->wsHandler->onError($conn1, $exception);
 
-        $conn1->assertSentEvent('pusher.error');
-        $conn2->assertNotSentEvent('pusher.error');
-        $conn3->assertNotSentEvent('pusher.error');
+        $conn1->assertSentEvent('websocket.error');
+        $conn2->assertNotSentEvent('websocket.error');
+        $conn3->assertNotSentEvent('websocket.error');
 
         $conn2->resetEvents();
         $conn3->resetEvents();
-        $this->pusherServer->onMessage($conn2, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($conn2, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $this->pusherServer->onMessage($conn3, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($conn3, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $conn2->assertSentEvent('pusher.pong');
-        $conn3->assertSentEvent('pusher.pong');
+        $conn2->assertSentEvent('websocket.pong');
+        $conn3->assertSentEvent('websocket.pong');
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertTrue($channel->hasConnection($conn2));
@@ -615,20 +618,20 @@ class HandlerStabilityTest extends TestCase
         $survivor2 = $this->newActiveConnection(['websocket']);
         $doomed = $this->newActiveConnection(['websocket']);
 
-        $this->pusherServer->onClose($doomed);
+        $this->wsHandler->onClose($doomed);
 
         $survivor1->resetEvents();
         $survivor2->resetEvents();
-        $this->pusherServer->onMessage($survivor1, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($survivor1, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $this->pusherServer->onMessage($survivor2, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($survivor2, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $survivor1->assertSentEvent('pusher.pong');
-        $survivor2->assertSentEvent('pusher.pong');
+        $survivor1->assertSentEvent('websocket.pong');
+        $survivor2->assertSentEvent('websocket.pong');
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertNotNull($channel);
@@ -650,17 +653,17 @@ class HandlerStabilityTest extends TestCase
         $rawMessage = $this->createRawMessage('{invalid json!!!}');
 
         try {
-            $this->pusherServer->onMessage($badConn, $rawMessage);
+            $this->wsHandler->onMessage($badConn, $rawMessage);
         } catch (\Throwable $e) {
             // Handler should catch, but even if it propagates, others unaffected
         }
 
         $goodConn->resetEvents();
-        $this->pusherServer->onMessage($goodConn, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($goodConn, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $goodConn->assertSentEvent('pusher.pong');
+        $goodConn->assertSentEvent('websocket.pong');
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertTrue($channel->hasConnection($goodConn));
@@ -678,9 +681,9 @@ class HandlerStabilityTest extends TestCase
     public function test_full_client_lifecycle_mirrors_frontend()
     {
         $connection = $this->newConnection('TestKey');
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
-        $established = collect($connection->sentData)->firstWhere('event', 'pusher.connection_established');
+        $established = collect($connection->sentData)->firstWhere('event', 'websocket.connection_established');
         $this->assertNotNull($established);
 
         $data = json_decode($established['data'], true);
@@ -688,49 +691,49 @@ class HandlerStabilityTest extends TestCase
         $this->assertNotEmpty($data['socket_id']);
 
         $connection->resetEvents();
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
-            'event' => 'pusher.subscribe',
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
+            'event' => 'websocket.subscribe',
             'data' => ['channel' => 'websocket', 'auth' => 'TestKey:fake-signature'],
         ]));
 
-        $connection->assertSentEvent('pusher_internal:subscription_succeeded');
-        $connection->assertSentEvent('pusher.subscribe:response');
+        $connection->assertSentEvent('websocket_internal.subscription_succeeded');
+        $connection->assertSentEvent('websocket.subscribe:response');
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertNotNull($channel);
         $this->assertTrue($channel->hasConnection($connection));
 
         $connection->resetEvents();
-        $this->pusherServer->onMessage($connection, $this->pingMsg);
-        $connection->assertSentEvent('pusher.pong');
+        $this->wsHandler->onMessage($connection, $this->pingMsg);
+        $connection->assertSentEvent('websocket.pong');
 
-        $this->pusherServer->onClose($connection);
+        $this->wsHandler->onClose($connection);
         $this->assertFalse($channel->hasConnection($connection));
     }
 
     /**
-     * Pusher-prefixed events get :response suffix from handlePusherEvent().
+     * Protocol events get :response suffix from handleProtocolEvent().
      *
      * @group protocol
      */
-    public function test_pusher_events_get_response_suffix()
+    public function test_protocol_events_get_response_suffix()
     {
         $connection = $this->newActiveConnection(['websocket']);
         $connection->resetEvents();
 
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
-            'event' => 'pusher.custom-event',
-            'data' => ['payload' => 'test'],
-            'channel' => 'websocket',
+        // Subscribe/unsubscribe are the protocol events that get :response
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
+            'event' => 'websocket.subscribe',
+            'data' => ['channel' => 'websocket'],
         ]));
 
-        $response = collect($connection->sentData)->firstWhere('event', 'pusher.custom-event:response');
-        $this->assertNotNull($response, 'Pusher events should get :response');
+        $response = collect($connection->sentData)->firstWhere('event', 'websocket.subscribe:response');
+        $this->assertNotNull($response, 'Protocol subscribe events should get :response');
         $this->assertEquals('Success', $response['data']['message']);
     }
 
     /**
-     * Both ping formats produce pongs: pusher.ping (frontend) and pusher:ping (Pusher spec).
+     * Both ping formats produce pongs: websocket.ping (dot) and pusher:ping (colon, backward compat).
      *
      * @group protocol
      */
@@ -739,47 +742,49 @@ class HandlerStabilityTest extends TestCase
         $connection = $this->newActiveConnection(['websocket']);
         $connection->resetEvents();
 
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
-            'event' => 'pusher.ping',
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
+            'event' => 'websocket.ping',
             'data' => new \stdClass(),
         ]));
-        $this->pusherServer->onMessage($connection, new Mocks\Message([
+        $this->wsHandler->onMessage($connection, new Mocks\Message([
             'event' => 'pusher:ping',
             'data' => new \stdClass(),
         ]));
 
         $this->assertEquals(
             2,
-            collect($connection->sentData)->where('event', 'pusher.pong')->count(),
+            collect($connection->sentData)->where('event', 'websocket.pong')->count(),
             'Both ping formats should produce pongs'
         );
     }
 
     /**
-     * Unsubscribe only works with dot format (pusher.unsubscribe).
-     * Colon format (pusher:unsubscribe) is NOT recognized.
+     * Unsubscribe works with dot format (websocket.unsubscribe).
+     * Colon format (pusher:unsubscribe) is also recognized via isProtocolAction().
      *
      * @group protocol
      */
-    public function test_unsubscribe_only_works_with_dot_format()
+    public function test_unsubscribe_works_with_both_dot_and_colon_format()
     {
+        // Dot format: websocket.unsubscribe
         $conn1 = $this->newActiveConnection(['websocket']);
-        $this->pusherServer->onMessage($conn1, new Mocks\Message([
-            'event' => 'pusher.unsubscribe',
+        $this->wsHandler->onMessage($conn1, new Mocks\Message([
+            'event' => 'websocket.unsubscribe',
             'data' => ['channel' => 'websocket'],
         ]));
 
         $channel = $this->channelManager->find('1234', 'websocket');
         $this->assertFalse($channel->hasConnection($conn1), 'Dot-format unsubscribes');
 
+        // Colon format: pusher:unsubscribe — also recognized by isProtocolAction()
         $conn2 = $this->newActiveConnection(['websocket']);
-        $this->pusherServer->onMessage($conn2, new Mocks\Message([
+        $this->wsHandler->onMessage($conn2, new Mocks\Message([
             'event' => 'pusher:unsubscribe',
             'data' => ['channel' => 'websocket'],
         ]));
 
         $channel = $this->channelManager->find('1234', 'websocket');
-        $this->assertTrue($channel->hasConnection($conn2), 'Colon-format does NOT unsubscribe');
+        $this->assertFalse($channel->hasConnection($conn2), 'Colon-format also unsubscribes');
     }
 
     /**
@@ -792,7 +797,7 @@ class HandlerStabilityTest extends TestCase
         $connection = new Mocks\Connection();
         $connection->httpRequest = new \GuzzleHttp\Psr7\Request('GET', '/?appKey=TestKey');
 
-        $this->pusherServer->onMessage($connection, $this->pingMsg);
+        $this->wsHandler->onMessage($connection, $this->pingMsg);
 
         $this->assertEmpty($connection->sentData, 'No data sent to connection without app');
     }

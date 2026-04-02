@@ -5,7 +5,6 @@ namespace BlaxSoftware\LaravelWebSockets\Console\Commands;
 use BlaxSoftware\LaravelWebSockets\Broadcast\BroadcastSocketServer;
 use BlaxSoftware\LaravelWebSockets\Cache\IpcCache;
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
-use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector as StatisticsCollectorFacade;
 use BlaxSoftware\LaravelWebSockets\Facades\WebSocketRouter;
 use BlaxSoftware\LaravelWebSockets\Ipc\SocketPairIpc;
 use BlaxSoftware\LaravelWebSockets\Server\Loggers\ConnectionLogger;
@@ -243,22 +242,9 @@ class StartServer extends Command
      */
     protected function configureStatistics()
     {
-        if (! $this->option('disable-statistics')) {
-            $intervalInSeconds = $this->option('statistics-interval') ?: config('websockets.statistics.interval_in_seconds', 3600);
-
-            \Log::channel('websocket')->debug('Statistics enabled', [
-                'interval_seconds' => $intervalInSeconds,
-            ]);
-
-            $this->loop->addPeriodicTimer($intervalInSeconds, function () {
-                \Log::channel('websocket')->debug('Statistics timer tick, saving...');
-                $this->line('Saving statistics...', null, OutputInterface::VERBOSITY_VERBOSE);
-
-                StatisticsCollectorFacade::save();
-            });
-        } else {
-            \Log::channel('websocket')->debug('Statistics disabled');
-        }
+        // Statistics collection has been removed.
+        // A new CLI monitoring system will replace it.
+        \Log::channel('websocket')->debug('Statistics disabled (removed)');
     }
 
     /**

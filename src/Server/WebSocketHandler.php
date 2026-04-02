@@ -4,14 +4,12 @@ namespace BlaxSoftware\LaravelWebSockets\Server;
 
 use BlaxSoftware\LaravelWebSockets\Apps\App;
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
-use BlaxSoftware\LaravelWebSockets\DashboardLogger;
 use BlaxSoftware\LaravelWebSockets\Events\ConnectionClosed;
 use BlaxSoftware\LaravelWebSockets\Events\NewConnection;
-use BlaxSoftware\LaravelWebSockets\Events\WebSocketMessageReceived;
-use BlaxSoftware\LaravelWebSockets\Facades\StatisticsCollector;
 use BlaxSoftware\LaravelWebSockets\Helpers;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\WebSocketException;
 use Exception;
+use Illuminate\Support\Str;
 use Ratchet\ConnectionInterface;
 use Ratchet\RFC6455\Messaging\MessageInterface;
 use Ratchet\WebSocket\MessageComponentInterface;
@@ -62,18 +60,9 @@ class WebSocketHandler implements MessageComponentInterface
                         /** @var \GuzzleHttp\Psr7\Request $request */
                         $request = $connection->httpRequest;
 
-                        if ($connection->app->statisticsEnabled) {
-                            StatisticsCollector::connection($connection->app->id);
-                        }
-
                         $this->channelManager->subscribeToApp($connection->app->id);
 
                         $this->channelManager->connectionPonged($connection);
-
-                        DashboardLogger::log($connection->app->id, DashboardLogger::TYPE_CONNECTED, [
-                            'origin' => "{$request->getUri()->getScheme()}://{$request->getUri()->getHost()}",
-                            'socketId' => $connection->socketId,
-                        ]);
 
                         NewConnection::dispatch($connection->app->id, $connection->socketId);
                     }
@@ -98,19 +87,49 @@ class WebSocketHandler implements MessageComponentInterface
             return;
         }
 
-        Messages\PusherMessageFactory::createForMessage(
-            $message, $connection, $this->channelManager
-        )->respond();
+        $payload = json_decode($message->getPayload());
 
-        if ($connection->app->statisticsEnabled) {
-            StatisticsCollector::webSocketMessage($connection->app->id);
+        if (! isset($payload->event)) {
+            return;
         }
 
-        WebSocketMessageReceived::dispatch(
-            $connection->app->id,
-            $connection->socketId,
-            $message
-        );
+        $event = $payload->event;
+
+        if ($this->isProtocolAction($event, 'ping')) {
+            $connection->send(json_encode(['event' => 'websocket.pong']));
+            $this->channelManager->connectionPonged($connection);
+            return;
+        }
+
+        if ($this->isProtocolAction($event, 'subscribe')) {
+            $channel = $payload->data->channel ?? null;
+            if ($channel) {
+                $this->channelManager->subscribeToChannel($connection, $channel, $payload->data ?? new \stdClass);
+            }
+            return;
+        }
+
+        if ($this->isProtocolAction($event, 'unsubscribe')) {
+            $channel = $payload->data->channel ?? null;
+            if ($channel) {
+                $this->channelManager->unsubscribeFromChannel($connection, $channel, $payload->data ?? new \stdClass);
+            }
+            return;
+        }
+
+        // Client events (whisper) — must start with "client-"
+        if (Str::startsWith($event, 'client-')) {
+            $channel = $payload->channel ?? ($payload->data->channel ?? null);
+            if ($channel) {
+                $ch = $this->channelManager->find($connection->app->id, $channel);
+                if ($ch) {
+                    $ch->broadcastToEveryoneExcept(
+                        $payload, $connection->socketId, $connection->app->id, false
+                    );
+                }
+            }
+            return;
+        }
     }
 
     /**
@@ -125,10 +144,6 @@ class WebSocketHandler implements MessageComponentInterface
             ->unsubscribeFromAllChannels($connection)
             ->then(function (bool $unsubscribed) use ($connection) {
                 if (isset($connection->app)) {
-                    if ($connection->app->statisticsEnabled) {
-                        StatisticsCollector::disconnection($connection->app->id);
-                    }
-
                     return $this->channelManager->unsubscribeFromApp($connection->app->id);
                 }
 
@@ -136,10 +151,6 @@ class WebSocketHandler implements MessageComponentInterface
             })
             ->then(function () use ($connection) {
                 if (isset($connection->app)) {
-                    DashboardLogger::log($connection->app->id, DashboardLogger::TYPE_DISCONNECTED, [
-                        'socketId' => $connection->socketId,
-                    ]);
-
                     ConnectionClosed::dispatch($connection->app->id, $connection->socketId);
                 }
             });
@@ -273,7 +284,7 @@ class WebSocketHandler implements MessageComponentInterface
     protected function establishConnection(ConnectionInterface $connection)
     {
         $connection->send(json_encode([
-            'event' => 'pusher.connection_established',
+            'event' => 'websocket.connection_established',
             'data' => json_encode([
                 'socket_id' => $connection->socketId,
                 'activity_timeout' => 30,
@@ -281,5 +292,18 @@ class WebSocketHandler implements MessageComponentInterface
         ]));
 
         return $this;
+    }
+
+    /**
+     * Check if an event matches a protocol action (e.g., subscribe, ping).
+     * Matches both dot and colon delimiters for backward compatibility.
+     *
+     * @param  string  $event
+     * @param  string  $action
+     * @return bool
+     */
+    protected function isProtocolAction(string $event, string $action): bool
+    {
+        return str_ends_with($event, '.' . $action) || str_ends_with($event, ':' . $action);
     }
 }

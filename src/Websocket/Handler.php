@@ -46,7 +46,7 @@ class Handler implements MessageComponentInterface
      * Pre-encoded static JSON responses for performance
      * Encoding once at startup is faster than encoding every time
      */
-    private static string $PONG_RESPONSE = '{"event":"pusher.pong"}';
+    private static string $PONG_RESPONSE = '{"event":"websocket.pong"}';
 
     /**
      * GC collection counter - only collect every N pings
@@ -141,8 +141,8 @@ class Handler implements MessageComponentInterface
 
         $event = $data['event'] ?? '';
 
-        // Direct string comparison (faster than strtolower + comparison)
-        if ($event !== 'pusher:ping' && $event !== 'pusher.ping') {
+        // Match any prefix with . or : delimiter followed by 'ping'
+        if (!self::isProtocolAction($event, 'ping')) {
             return false;
         }
 
@@ -210,8 +210,8 @@ class Handler implements MessageComponentInterface
         // Decode message (we already have payload string)
         $messageArray = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
 
-        // Handle pusher protocol messages (subscribe, unsubscribe, etc.)
-        $this->handlePusherProtocolMessage($message, $connection, $messageArray);
+        // Handle protocol messages (client-* broadcasts)
+        $this->handleProtocolMessage($message, $connection, $messageArray);
 
         $channel = $this->handleChannelSubscriptions($messageArray, $connection);
 
@@ -226,7 +226,7 @@ class Handler implements MessageComponentInterface
             Log::channel('websocket')->debug('[' . $connection->socketId . ']@' . $channel->getName() . ' | ' . $payload);
         }
 
-        if ($this->handlePusherEvent($messageArray, $connection)) {
+        if ($this->handleProtocolEvent($messageArray, $connection)) {
             return;
         }
 
@@ -237,20 +237,14 @@ class Handler implements MessageComponentInterface
      * Handle pusher protocol messages (formerly in PusherMessageFactory)
      * Inlined for performance - avoids object creation
      */
-    private function handlePusherProtocolMessage(
+    private function handleProtocolMessage(
         MessageInterface $message,
         ConnectionInterface $connection,
         array $messageArray
     ): void {
         $event = $messageArray['event'] ?? '';
 
-        // Fast check - most messages don't start with 'pusher' or 'client-'
-        $firstChar = $event[0] ?? '';
-        if ($firstChar !== 'p' && $firstChar !== 'c') {
-            return;
-        }
-
-        // Check for client- messages
+        // Check for client- broadcast messages
         if (strpos($event, 'client-') === 0) {
             if (!$connection->app->clientMessagesEnabled) {
                 return;
@@ -269,11 +263,7 @@ class Handler implements MessageComponentInterface
                     $connection->app->id
                 );
             }
-            return;
         }
-
-        // Check for pusher: or pusher. messages (subscribe/unsubscribe handled elsewhere)
-        // This is handled by handleChannelSubscriptions for subscribe/unsubscribe
     }
 
     public function onOpen(ConnectionInterface $connection): void
@@ -354,7 +344,7 @@ class Handler implements MessageComponentInterface
     protected function shouldRejectMessage(?Channel $channel, ConnectionInterface $connection, array $message): bool
     {
         $event = $message['event'] ?? '';
-        $isUnsubscribe = $event === 'pusher:unsubscribe' || $event === 'pusher.unsubscribe';
+        $isUnsubscribe = self::isProtocolAction($event, 'unsubscribe');
 
         if (!$channel?->hasConnection($connection) && !$isUnsubscribe) {
             // The connection may have been removed from Channel::$connections by
@@ -394,19 +384,42 @@ class Handler implements MessageComponentInterface
         return false;
     }
 
-    protected function handlePusherEvent(array $message, ConnectionInterface $connection): bool
+    /**
+     * Handle protocol-level events (subscribe, unsubscribe, ping, etc.).
+     * These are events with a known action after the delimiter (e.g. websocket.subscribe).
+     * Sends an immediate :response acknowledgement and short-circuits forkWithSocketPair.
+     */
+    protected function handleProtocolEvent(array $message, ConnectionInterface $connection): bool
     {
-        if (!str_contains($message['event'], 'pusher')) {
+        $event = $message['event'] ?? '';
+
+        if (!self::isProtocolAction($event, 'subscribe') && !self::isProtocolAction($event, 'unsubscribe')) {
             return false;
         }
 
         $connection->send(json_encode([
-            'event' => $message['event'] . ':response',
+            'event' => $event . ':response',
             'data' => [
                 'message' => 'Success',
             ],
         ]));
         return true;
+    }
+
+    /**
+     * Check if an event name ends with a known protocol action.
+     * Matches any prefix with either . or : as delimiter.
+     *
+     * Examples that match isProtocolAction($event, 'subscribe'):
+     *   websocket.subscribe, pusher:subscribe, my.prefix.subscribe
+     *
+     * Examples that do NOT match:
+     *   admin.unsubscribeUserStatus (does not end with .subscribe or :subscribe)
+     */
+    protected static function isProtocolAction(string $event, string $action): bool
+    {
+        return str_ends_with($event, '.' . $action)
+            || str_ends_with($event, ':' . $action);
     }
 
     /**
@@ -1070,7 +1083,7 @@ class Handler implements MessageComponentInterface
     protected function establishConnection(ConnectionInterface $connection)
     {
         $connection->send(json_encode([
-            'event' => 'pusher.connection_established',
+            'event' => 'websocket.connection_established',
             'data' => json_encode([
                 'socket_id' => $connection->socketId,
                 'activity_timeout' => 30,
@@ -1108,14 +1121,14 @@ class Handler implements MessageComponentInterface
             return null;
         }
 
-        $eventLower = strtolower($message['event']);
+        $event = $message['event'];
 
-        if ($eventLower === 'pusher.subscribe' || $eventLower === 'pusher:subscribe') {
-            $this->handleSubscription($channel, $channel_name, $connection, $message);
+        if (self::isProtocolAction($event, 'unsubscribe')) {
+            $this->handleUnsubscription($channel, $channel_name, $connection);
         }
 
-        if (str_contains($message['event'], '.unsubscribe')) {
-            $this->handleUnsubscription($channel, $channel_name, $connection);
+        if (self::isProtocolAction($event, 'subscribe')) {
+            $this->handleSubscription($channel, $channel_name, $connection, $message);
         }
 
         return $channel;
@@ -1151,9 +1164,9 @@ class Handler implements MessageComponentInterface
         }
 
         try {
-            $channel->subscribe($connection, (object) $message);
+            $channel->subscribe($connection, (object) ($message['data'] ?? []));
         } catch (\Throwable $e) {
-            // Silently handle subscription errors
+            // Silently handle subscription errors (e.g. invalid signatures)
         }
     }
 

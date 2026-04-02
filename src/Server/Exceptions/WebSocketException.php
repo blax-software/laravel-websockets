@@ -7,14 +7,14 @@ use Exception;
 class WebSocketException extends Exception
 {
     /**
-     * Get the payload, Pusher-like formatted.
+     * Get the payload.
      *
      * @return array
      */
     public function getPayload()
     {
         return [
-            'event' => 'pusher.error',
+            'event' => 'websocket.error',
             'data' => [
                 'message' => $this->getMessage(),
                 'code' => $this->getCode(),

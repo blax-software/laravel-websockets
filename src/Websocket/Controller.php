@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace BlaxSoftware\LaravelWebSockets\Websocket;
 
 use BlaxSoftware\LaravelWebSockets\ChannelManagers\LocalChannelManager;
-use BlaxSoftware\LaravelWebSockets\ChannelManagers\RedisChannelManager;
 use BlaxSoftware\LaravelWebSockets\Channels\Channel;
 use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
@@ -22,7 +21,7 @@ class Controller
         protected ConnectionInterface $connection,
         protected PrivateChannel|Channel|PresenceChannel|null $channel,
         protected string $event,
-        protected LocalChannelManager|RedisChannelManager $channelManager
+        protected LocalChannelManager $channelManager
     ) {
         $this->isMockConnection = $connection instanceof MockConnectionSocketPair;
     }
@@ -57,7 +56,7 @@ class Controller
         ConnectionInterface $connection,
         PrivateChannel|Channel|PresenceChannel $channel,
         array $message,
-        LocalChannelManager|RedisChannelManager $channelManager
+        LocalChannelManager $channelManager
     ) {
         $event = self::get_event($message);
         if (count($event) !== 2) {
@@ -378,16 +377,8 @@ class Controller
 
     private static function get_event($message)
     {
-        $event = explode('.', $message['event']);
-
-        if (strpos($event[0], 'pusher.') > -1) {
-            $event = explode('.', $event[0]);
-        }
-
-        if (strpos($event[0], 'pusher:') > -1) {
-            $event = explode(':', $event[0]);
-        }
-
-        return $event;
+        // Split on '.' delimiter to get [controller, method, ...]
+        // e.g. "admin.dashboard[abc]" → ["admin", "dashboard[abc]"]
+        return explode('.', $message['event']);
     }
 }

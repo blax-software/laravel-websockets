@@ -94,7 +94,7 @@ class IpcCacheTest extends TestCase
     public function test_it_can_store_complex_data()
     {
         $complexData = [
-            'event' => 'pusher:connection_established',
+            'event' => 'websocket.connection_established',
             'data' => [
                 'socket_id' => '123.456',
                 'activity_timeout' => 120,

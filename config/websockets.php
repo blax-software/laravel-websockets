@@ -287,14 +287,6 @@ return [
 
         'health' => \BlaxSoftware\LaravelWebSockets\Server\HealthHandler::class,
 
-        'trigger_event' => \BlaxSoftware\LaravelWebSockets\API\TriggerEvent::class,
-
-        'fetch_channels' => \BlaxSoftware\LaravelWebSockets\API\FetchChannels::class,
-
-        'fetch_channel' => \BlaxSoftware\LaravelWebSockets\API\FetchChannel::class,
-
-        'fetch_users' => \BlaxSoftware\LaravelWebSockets\API\FetchUsers::class,
-
     ],
 
     /*

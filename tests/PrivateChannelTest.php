@@ -2,49 +2,46 @@
 
 namespace BlaxSoftware\LaravelWebSockets\Test;
 
-use BlaxSoftware\LaravelWebSockets\API\TriggerEvent;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\InvalidSignature;
-use GuzzleHttp\Psr7\Request;
-use Illuminate\Http\JsonResponse;
-use Pusher\Pusher;
 use Ratchet\ConnectionInterface;
 
 class PrivateChannelTest extends TestCase
 {
     public function test_connect_to_private_channel_with_invalid_signature()
     {
-        $this->expectException(InvalidSignature::class);
-
         $connection = $this->newConnection();
 
         $message = new Mocks\Message([
-            'event' => 'pusher.subscribe',
+            'event' => 'websocket.subscribe',
             'data' => [
                 'auth' => 'invalid',
                 'channel' => 'private-channel',
             ],
         ]);
 
-        $this->pusherServer->onOpen($connection);
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onOpen($connection);
+        $this->wsHandler->onMessage($connection, $message);
+
+        // Invalid signature should be silently rejected — no subscription_succeeded sent
+        $connection->assertNotSentEvent('websocket_internal.subscription_succeeded');
     }
 
     public function test_connect_to_private_channel_with_valid_signature()
     {
         $connection = $this->newConnection();
 
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher.subscribe',
+            'event' => 'websocket.subscribe',
             'data' => [
                 'channel' => 'private-channel',
             ],
         ], $connection, 'private-channel');
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
-        $connection->assertSentEvent('pusher_internal:subscription_succeeded', [
+        $connection->assertSentEvent('websocket_internal.subscription_succeeded', [
             'channel' => 'private-channel',
         ]);
 
@@ -66,13 +63,13 @@ class PrivateChannelTest extends TestCase
             });
 
         $message = new Mocks\Message([
-            'event' => 'pusher.unsubscribe',
+            'event' => 'websocket.unsubscribe',
             'data' => [
                 'channel' => 'private-channel',
             ],
         ]);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
         $this->channelManager
             ->getGlobalConnectionsCount('1234', 'private-channel')
@@ -94,7 +91,7 @@ class PrivateChannelTest extends TestCase
             'channel' => 'private-channel',
         ]);
 
-        $this->pusherServer->onMessage($rick, $message);
+        $this->wsHandler->onMessage($rick, $message);
 
         $rick->assertNotSentEvent('client-test-whisper');
         $morty->assertSentEvent('client-test-whisper', ['data' => [], 'channel' => 'private-channel']);
@@ -111,33 +108,10 @@ class PrivateChannelTest extends TestCase
             'channel' => 'private-channel',
         ]);
 
-        $this->pusherServer->onMessage($rick, $message);
+        $this->wsHandler->onMessage($rick, $message);
 
         $rick->assertNotSentEvent('client-test-whisper');
         $morty->assertNotSentEvent('client-test-whisper');
-    }
-
-    public function test_statistics_get_collected_for_private_channels()
-    {
-        $rick = $this->newPrivateConnection('private-channel');
-        $morty = $this->newPrivateConnection('private-channel');
-
-        $this->statisticsCollector
-            ->getStatistics()
-            ->then(function ($statistics) {
-                $this->assertCount(1, $statistics);
-            });
-
-        $this->statisticsCollector
-            ->getAppStatistics('1234')
-            ->then(function ($statistic) {
-                $this->assertEquals([
-                    'peak_connections_count' => 2,
-                    'websocket_messages_count' => 2,
-                    'api_messages_count' => 0,
-                    'app_id' => '1234',
-                ], $statistic->toArray());
-            });
     }
 
     public function test_local_connections_for_private_channels()
@@ -227,145 +201,4 @@ class PrivateChannelTest extends TestCase
             ]);
     }
 
-    public function test_it_fires_the_event_to_private_channel()
-    {
-        $this->newPrivateConnection('private-channel');
-
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['private-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        $this->statisticsCollector
-            ->getAppStatistics('1234')
-            ->then(function ($statistic) {
-                $this->assertEquals([
-                    'peak_connections_count' => 1,
-                    'websocket_messages_count' => 1,
-                    'api_messages_count' => 1,
-                    'app_id' => '1234',
-                ], $statistic->toArray());
-            });
-    }
-
-    public function test_it_fires_event_across_servers_when_there_are_not_users_locally_for_private_channel()
-    {
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['private-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        if (method_exists($this->channelManager, 'getPublishClient')) {
-            $this->channelManager
-                ->getPublishClient()
-                ->assertCalledWithArgsCount(1, 'publish', [
-                    $this->channelManager->getRedisKey('1234', 'private-channel'),
-                    json_encode([
-                        'event' => 'some-event',
-                        'channel' => 'private-channel',
-                        'data' => json_encode(['some-data' => 'yes']),
-                        'appId' => '1234',
-                        'socketId' => null,
-                        'serverId' => $this->channelManager->getServerId(),
-                    ]),
-                ]);
-        }
-    }
-
-    public function test_it_fires_event_across_servers_when_there_are_users_locally_for_private_channel()
-    {
-        $wsConnection = $this->newPrivateConnection('private-channel');
-
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['private-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        if (method_exists($this->channelManager, 'getPublishClient')) {
-            $this->channelManager
-                ->getPublishClient()
-                ->assertCalledWithArgsCount(1, 'publish', [
-                    $this->channelManager->getRedisKey('1234', 'private-channel'),
-                    json_encode([
-                        'event' => 'some-event',
-                        'channel' => 'private-channel',
-                        'data' => json_encode(['some-data' => 'yes']),
-                        'appId' => '1234',
-                        'socketId' => null,
-                        'serverId' => $this->channelManager->getServerId(),
-                    ]),
-                ]);
-        }
-
-        $wsConnection->assertSentEvent('some-event', [
-            'channel' => 'private-channel',
-            'data' => json_encode(['some-data' => 'yes']),
-        ]);
-    }
 }

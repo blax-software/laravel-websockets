@@ -11,9 +11,9 @@ class HealthTest extends TestCase
     {
         $connection = $this->newConnection();
 
-        $this->pusherServer = app(HealthHandler::class);
+        $this->wsHandler = app(HealthHandler::class);
 
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
         $this->assertTrue(
             Str::contains($connection->sentRawData[0], '{"ok":true}')

@@ -3,8 +3,6 @@
 namespace BlaxSoftware\LaravelWebSockets\Test;
 
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
-use BlaxSoftware\LaravelWebSockets\Contracts\StatisticsCollector;
-use BlaxSoftware\LaravelWebSockets\Contracts\StatisticsStore;
 use BlaxSoftware\LaravelWebSockets\Facades\WebSocketRouter;
 use BlaxSoftware\LaravelWebSockets\Helpers;
 use BlaxSoftware\LaravelWebSockets\Server\Loggers\HttpLogger;
@@ -42,11 +40,11 @@ abstract class TestCase extends Orchestra
     protected $server;
 
     /**
-     * A test Pusher server.
+     * The WebSocket handler under test.
      *
      * @var \BlaxSoftware\LaravelWebSockets\Server\WebSocketHandler
      */
-    protected $pusherServer;
+    protected $wsHandler;
 
     /**
      * The test Channel manager.
@@ -55,19 +53,7 @@ abstract class TestCase extends Orchestra
      */
     protected $channelManager;
 
-    /**
-     * The test Channel manager.
-     *
-     * @var \BlaxSoftware\LaravelWebSockets\Contracts\StatisticsCollector
-     */
-    protected $statisticsCollector;
 
-    /**
-     * The test Channel manager.
-     *
-     * @var \BlaxSoftware\LaravelWebSockets\Contracts\StatisticsStore
-     */
-    protected $statisticsStore;
 
     /**
      * Get the loop instance.
@@ -132,11 +118,7 @@ abstract class TestCase extends Orchestra
 
         $this->registerManagers();
 
-        $this->registerStatisticsCollectors();
-
-        $this->registerStatisticsStores();
-
-        $this->pusherServer = $this->app->make(config('websockets.handlers.websocket'));
+        $this->wsHandler = $this->app->make(config('websockets.handlers.websocket'));
 
         if ($this->replicationMode === 'redis') {
             $this->registerRedis();
@@ -268,12 +250,6 @@ abstract class TestCase extends Orchestra
         $app['config']->set('websockets.replication.modes', [
             'local' => [
                 'channel_manager' => \BlaxSoftware\LaravelWebSockets\ChannelManagers\LocalChannelManager::class,
-                'collector' => \BlaxSoftware\LaravelWebSockets\Statistics\Collectors\MemoryCollector::class,
-            ],
-            'redis' => [
-                'channel_manager' => \BlaxSoftware\LaravelWebSockets\ChannelManagers\RedisChannelManager::class,
-                'connection' => 'default',
-                'collector' => \BlaxSoftware\LaravelWebSockets\Statistics\Collectors\RedisCollector::class,
             ],
         ]);
     }
@@ -341,34 +317,7 @@ abstract class TestCase extends Orchestra
         $this->app->offsetUnset(ChannelManager::class);
     }
 
-    /**
-     * Register the statistics collectors.
-     *
-     * @return void
-     */
-    protected function registerStatisticsCollectors()
-    {
-        $this->statisticsCollector = $this->app->make(StatisticsCollector::class);
 
-        $this->artisan('websockets:flush');
-    }
-
-    /**
-     * Register the statistics stores that are
-     * not resolved by the package service provider.
-     *
-     * @return void
-     */
-    protected function registerStatisticsStores()
-    {
-        $this->app->singleton(StatisticsStore::class, function () {
-            $class = config('websockets.statistics.store');
-
-            return new $class;
-        });
-
-        $this->statisticsStore = $this->app->make(StatisticsStore::class);
-    }
 
     /**
      * Register the Redis components for testing.
@@ -424,17 +373,17 @@ abstract class TestCase extends Orchestra
     {
         $connection = $this->newConnection($appKey, $headers);
 
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
         foreach ($channelsToJoin as $channel) {
             $message = new Mocks\Message([
-                'event' => 'pusher.subscribe',
+                'event' => 'websocket.subscribe',
                 'data' => [
                     'channel' => $channel,
                 ],
             ]);
 
-            $this->pusherServer->onMessage($connection, $message);
+            $this->wsHandler->onMessage($connection, $message);
         }
 
         return $connection;
@@ -453,7 +402,7 @@ abstract class TestCase extends Orchestra
     {
         $connection = $this->newConnection($appKey, $headers);
 
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
         $user = $user ?: [
             'user_id' => 1,
@@ -463,14 +412,14 @@ abstract class TestCase extends Orchestra
         $encodedUser = json_encode($user);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher.subscribe',
+            'event' => 'websocket.subscribe',
             'data' => [
                 'channel' => $channel,
                 'channel_data' => $encodedUser,
             ],
         ], $connection, $channel, $encodedUser);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
         return $connection;
     }
@@ -487,16 +436,16 @@ abstract class TestCase extends Orchestra
     {
         $connection = $this->newConnection($appKey, $headers);
 
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher.subscribe',
+            'event' => 'websocket.subscribe',
             'data' => [
                 'channel' => $channel,
             ],
         ], $connection, $channel);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
         return $connection;
     }

@@ -3,9 +3,6 @@
 namespace BlaxSoftware\LaravelWebSockets\Channels;
 
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
-use BlaxSoftware\LaravelWebSockets\DashboardLogger;
-use BlaxSoftware\LaravelWebSockets\Events\SubscribedToChannel;
-use BlaxSoftware\LaravelWebSockets\Events\UnsubscribedFromChannel;
 use BlaxSoftware\LaravelWebSockets\Helpers;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\InvalidSignature;
 use Illuminate\Support\Str;
@@ -103,20 +100,9 @@ class Channel
         $this->saveConnection($connection);
 
         $connection->send(json_encode([
-            'event' => 'pusher_internal:subscription_succeeded',
+            'event' => 'websocket_internal.subscription_succeeded',
             'channel' => $this->getName(),
         ]));
-
-        DashboardLogger::log($connection->app->id, DashboardLogger::TYPE_SUBSCRIBED, [
-            'socketId' => $connection->socketId,
-            'channel' => $this->getName(),
-        ]);
-
-        SubscribedToChannel::dispatch(
-            $connection->app->id,
-            $connection->socketId,
-            $this->getName(),
-        );
 
         return true;
     }
@@ -134,12 +120,6 @@ class Channel
         }
 
         unset($this->connections[$connection->socketId]);
-
-        UnsubscribedFromChannel::dispatch(
-            $connection->app->id,
-            $connection->socketId,
-            $this->getName()
-        );
 
         return Helpers::createFulfilledPromise(true);
     }

@@ -2,7 +2,7 @@
 
 namespace BlaxSoftware\LaravelWebSockets\ChannelManagers;
 
-use BlaxSoftware\LaravelWebSockets\Cache\ArrayLock;
+use Illuminate\Cache\ArrayLock;
 use BlaxSoftware\LaravelWebSockets\Channels\Channel;
 use BlaxSoftware\LaravelWebSockets\Channels\OpenPresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;

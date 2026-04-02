@@ -50,7 +50,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
 
             // Simulate what happens when a client connects
             $connectionEstablished = json_encode([
-                'event' => 'pusher:connection_established',
+                'event' => 'websocket.connection_established',
                 'data' => json_encode([
                     'socket_id' => '123.456',
                     'activity_timeout' => 30,
@@ -81,7 +81,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         $this->assertNotNull($receivedData);
 
         $decoded = json_decode($receivedData, true);
-        $this->assertEquals('pusher:connection_established', $decoded['event']);
+        $this->assertEquals('websocket.connection_established', $decoded['event']);
 
         $data = json_decode($decoded['data'], true);
         $this->assertEquals('123.456', $data['socket_id']);
@@ -117,7 +117,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
 
             // Simulate subscription success response
             $subscriptionSuccess = json_encode([
-                'event' => 'pusher_internal:subscription_succeeded',
+                'event' => 'websocket_internal.subscription_succeeded',
                 'channel' => 'public-channel',
                 'data' => '{}',
             ]);
@@ -144,7 +144,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         pcntl_waitpid($pid, $status);
 
         $decoded = json_decode($receivedData, true);
-        $this->assertEquals('pusher_internal:subscription_succeeded', $decoded['event']);
+        $this->assertEquals('websocket_internal.subscription_succeeded', $decoded['event']);
         $this->assertEquals('public-channel', $decoded['channel']);
     }
 
@@ -189,7 +189,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
             ];
 
             $subscriptionSuccess = json_encode([
-                'event' => 'pusher_internal:subscription_succeeded',
+                'event' => 'websocket_internal.subscription_succeeded',
                 'channel' => 'presence-room.1',
                 'data' => json_encode($presenceData),
             ]);
@@ -216,7 +216,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         pcntl_waitpid($pid, $status);
 
         $decoded = json_decode($receivedData, true);
-        $this->assertEquals('pusher_internal:subscription_succeeded', $decoded['event']);
+        $this->assertEquals('websocket_internal.subscription_succeeded', $decoded['event']);
         $this->assertEquals('presence-room.1', $decoded['channel']);
 
         $data = json_decode($decoded['data'], true);
@@ -387,7 +387,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
 
             // Simulate an error response
             $errorResponse = json_encode([
-                'event' => 'pusher:error',
+                'event' => 'websocket.error',
                 'data' => [
                     'message' => 'Could not find app key `InvalidKey`.',
                     'code' => 4001,
@@ -416,7 +416,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         pcntl_waitpid($pid, $status);
 
         $decoded = json_decode($receivedData, true);
-        $this->assertEquals('pusher:error', $decoded['event']);
+        $this->assertEquals('websocket.error', $decoded['event']);
         $this->assertEquals(4001, $decoded['data']['code']);
     }
 
@@ -448,7 +448,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
             $ipc->setupChild();
 
             $memberAdded = json_encode([
-                'event' => 'pusher_internal:member_added',
+                'event' => 'websocket_internal.member_added',
                 'channel' => 'presence-room.1',
                 'data' => json_encode([
                     'user_id' => 'user_4',
@@ -478,7 +478,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         pcntl_waitpid($pid, $status);
 
         $decoded = json_decode($receivedData, true);
-        $this->assertEquals('pusher_internal:member_added', $decoded['event']);
+        $this->assertEquals('websocket_internal.member_added', $decoded['event']);
 
         $data = json_decode($decoded['data'], true);
         $this->assertEquals('user_4', $data['user_id']);
@@ -512,7 +512,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
             $ipc->setupChild();
 
             $memberRemoved = json_encode([
-                'event' => 'pusher_internal:member_removed',
+                'event' => 'websocket_internal.member_removed',
                 'channel' => 'presence-room.1',
                 'data' => json_encode([
                     'user_id' => 'user_2',
@@ -541,7 +541,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         pcntl_waitpid($pid, $status);
 
         $decoded = json_decode($receivedData, true);
-        $this->assertEquals('pusher_internal:member_removed', $decoded['event']);
+        $this->assertEquals('websocket_internal.member_removed', $decoded['event']);
     }
 
     /**
@@ -574,7 +574,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
 
             // Simulate pong response
             $pongResponse = json_encode([
-                'event' => 'pusher:pong',
+                'event' => 'websocket.pong',
                 'data' => '{}',
             ]);
 
@@ -602,7 +602,7 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         pcntl_waitpid($pid, $status);
 
         $decoded = json_decode($receivedData, true);
-        $this->assertEquals('pusher:pong', $decoded['event']);
+        $this->assertEquals('websocket.pong', $decoded['event']);
 
         // Ping/pong should be very fast
         $this->assertLessThan(50, $latency, "Ping/pong latency {$latency}ms exceeds 50ms");
@@ -637,13 +637,13 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
 
             // 1. Connection established
             $ipc->sendToParent(json_encode([
-                'event' => 'pusher:connection_established',
+                'event' => 'websocket.connection_established',
                 'data' => json_encode(['socket_id' => '123.456', 'activity_timeout' => 30]),
             ]));
 
             // 2. Subscribe to channel
             $ipc->sendToParent(json_encode([
-                'event' => 'pusher_internal:subscription_succeeded',
+                'event' => 'websocket_internal.subscription_succeeded',
                 'channel' => 'public-chat',
                 'data' => '{}',
             ]));
@@ -657,13 +657,13 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
 
             // 4. Ping response
             $ipc->sendToParent(json_encode([
-                'event' => 'pusher:pong',
+                'event' => 'websocket.pong',
                 'data' => '{}',
             ]));
 
             // 5. Unsubscribe
             $ipc->sendToParent(json_encode([
-                'event' => 'pusher_internal:unsubscribed',
+                'event' => 'websocket_internal.unsubscribed',
                 'channel' => 'public-chat',
             ]));
 
@@ -693,11 +693,11 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         $this->assertCount(5, $receivedMessages);
 
         // Verify lifecycle order
-        $this->assertEquals('pusher:connection_established', $receivedMessages[0]['event']);
-        $this->assertEquals('pusher_internal:subscription_succeeded', $receivedMessages[1]['event']);
+        $this->assertEquals('websocket.connection_established', $receivedMessages[0]['event']);
+        $this->assertEquals('websocket_internal.subscription_succeeded', $receivedMessages[1]['event']);
         $this->assertEquals('new-message', $receivedMessages[2]['event']);
-        $this->assertEquals('pusher:pong', $receivedMessages[3]['event']);
-        $this->assertEquals('pusher_internal:unsubscribed', $receivedMessages[4]['event']);
+        $this->assertEquals('websocket.pong', $receivedMessages[3]['event']);
+        $this->assertEquals('websocket_internal.unsubscribed', $receivedMessages[4]['event']);
     }
 
     /**
@@ -744,8 +744,8 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
             $mock = new MockConnectionSocketPair($realConnection, $ipc);
 
             // Simulate sending multiple messages through mock
-            $mock->send(json_encode(['event' => 'pusher:connection_established', 'data' => '{}']));
-            $mock->send(json_encode(['event' => 'pusher_internal:subscription_succeeded', 'channel' => 'test']));
+            $mock->send(json_encode(['event' => 'websocket.connection_established', 'data' => '{}']));
+            $mock->send(json_encode(['event' => 'websocket_internal.subscription_succeeded', 'channel' => 'test']));
             $mock->send(json_encode(['event' => 'message', 'data' => 'Hello']));
 
             $ipc->closeChild();
@@ -772,8 +772,8 @@ class SocketPairIpcWebsocketWorkflowTest extends TestCase
         pcntl_waitpid($pid, $status);
 
         $this->assertCount(3, $receivedMessages);
-        $this->assertEquals('pusher:connection_established', $receivedMessages[0]['event']);
-        $this->assertEquals('pusher_internal:subscription_succeeded', $receivedMessages[1]['event']);
+        $this->assertEquals('websocket.connection_established', $receivedMessages[0]['event']);
+        $this->assertEquals('websocket_internal.subscription_succeeded', $receivedMessages[1]['event']);
         $this->assertEquals('message', $receivedMessages[2]['event']);
     }
 }

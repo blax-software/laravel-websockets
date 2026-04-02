@@ -2,38 +2,35 @@
 
 namespace BlaxSoftware\LaravelWebSockets\Test;
 
-use BlaxSoftware\LaravelWebSockets\API\TriggerEvent;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\InvalidSignature;
-use GuzzleHttp\Psr7\Request;
-use Illuminate\Http\JsonResponse;
-use Pusher\Pusher;
 use Ratchet\ConnectionInterface;
 
 class PresenceChannelTest extends TestCase
 {
     public function test_connect_to_presence_channel_with_invalid_signature()
     {
-        $this->expectException(InvalidSignature::class);
-
         $connection = $this->newConnection();
 
         $message = new Mocks\Message([
-            'event' => 'pusher.subscribe',
+            'event' => 'websocket.subscribe',
             'data' => [
                 'auth' => 'invalid',
                 'channel' => 'presence-channel',
             ],
         ]);
 
-        $this->pusherServer->onOpen($connection);
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onOpen($connection);
+        $this->wsHandler->onMessage($connection, $message);
+
+        // Invalid signature should be silently rejected — no subscription_succeeded sent
+        $connection->assertNotSentEvent('websocket_internal.subscription_succeeded');
     }
 
     public function test_connect_to_presence_channel_with_valid_signature()
     {
         $connection = $this->newConnection();
 
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
         $user = [
             'user_id' => 1,
@@ -45,16 +42,16 @@ class PresenceChannelTest extends TestCase
         $encodedUser = json_encode($user);
 
         $message = new Mocks\SignedMessage([
-            'event' => 'pusher.subscribe',
+            'event' => 'websocket.subscribe',
             'data' => [
                 'channel' => 'presence-channel',
                 'channel_data' => $encodedUser,
             ],
         ], $connection, 'presence-channel', $encodedUser);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
-        $connection->assertSentEvent('pusher_internal:subscription_succeeded', [
+        $connection->assertSentEvent('websocket_internal.subscription_succeeded', [
             'channel' => 'presence-channel',
         ]);
 
@@ -72,12 +69,12 @@ class PresenceChannelTest extends TestCase
         $pickleRick = $this->newPresenceConnection('presence-channel', ['user_id' => 1]);
 
         foreach ([$rick, $morty, $pickleRick] as $connection) {
-            $connection->assertSentEvent('pusher_internal:subscription_succeeded', [
+            $connection->assertSentEvent('websocket_internal.subscription_succeeded', [
                 'channel' => 'presence-channel',
             ]);
         }
 
-        $rick->assertSentEvent('pusher_internal:subscription_succeeded', [
+        $rick->assertSentEvent('websocket_internal.subscription_succeeded', [
             'channel' => 'presence-channel',
             'data' => json_encode([
                 'presence' => [
@@ -88,7 +85,7 @@ class PresenceChannelTest extends TestCase
             ]),
         ]);
 
-        $morty->assertSentEvent('pusher_internal:subscription_succeeded', [
+        $morty->assertSentEvent('websocket_internal.subscription_succeeded', [
             'channel' => 'presence-channel',
             'data' => json_encode([
                 'presence' => [
@@ -101,7 +98,7 @@ class PresenceChannelTest extends TestCase
 
         // The duplicated-user_id connection should get basically the list of ids
         // without dealing with duplicate user ids.
-        $pickleRick->assertSentEvent('pusher_internal:subscription_succeeded', [
+        $pickleRick->assertSentEvent('websocket_internal.subscription_succeeded', [
             'channel' => 'presence-channel',
             'data' => json_encode([
                 'presence' => [
@@ -130,7 +127,7 @@ class PresenceChannelTest extends TestCase
         $rick = $this->newPresenceConnection('presence-channel', ['user_id' => 1]);
         $morty = $this->newPresenceConnection('presence-channel', ['user_id' => 2]);
 
-        $rick->assertSentEvent('pusher_internal:member_added', [
+        $rick->assertSentEvent('websocket_internal.member_added', [
             'channel' => 'presence-channel',
             'data' => json_encode(['user_id' => 2]),
         ]);
@@ -141,9 +138,9 @@ class PresenceChannelTest extends TestCase
                 $this->assertCount(2, $members);
             });
 
-        $this->pusherServer->onClose($morty);
+        $this->wsHandler->onClose($morty);
 
-        $rick->assertSentEvent('pusher_internal:member_removed', [
+        $rick->assertSentEvent('websocket_internal.member_removed', [
             'channel' => 'presence-channel',
             'data' => json_encode(['user_id' => 2]),
         ]);
@@ -173,13 +170,13 @@ class PresenceChannelTest extends TestCase
             });
 
         $message = new Mocks\Message([
-            'event' => 'pusher.unsubscribe',
+            'event' => 'websocket.unsubscribe',
             'data' => [
                 'channel' => 'presence-channel',
             ],
         ]);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
         $this->channelManager
             ->getGlobalConnectionsCount('1234', 'presence-channel')
@@ -201,7 +198,7 @@ class PresenceChannelTest extends TestCase
             'channel' => 'presence-channel',
         ]);
 
-        $this->pusherServer->onMessage($rick, $message);
+        $this->wsHandler->onMessage($rick, $message);
 
         $rick->assertNotSentEvent('client-test-whisper');
         $morty->assertSentEvent('client-test-whisper', ['data' => [], 'channel' => 'presence-channel']);
@@ -218,33 +215,10 @@ class PresenceChannelTest extends TestCase
             'channel' => 'presence-channel',
         ]);
 
-        $this->pusherServer->onMessage($rick, $message);
+        $this->wsHandler->onMessage($rick, $message);
 
         $rick->assertNotSentEvent('client-test-whisper');
         $morty->assertNotSentEvent('client-test-whisper');
-    }
-
-    public function test_statistics_get_collected_for_presenece_channels()
-    {
-        $rick = $this->newPresenceConnection('presence-channel', ['user_id' => 1]);
-        $morty = $this->newPresenceConnection('presence-channel', ['user_id' => 2]);
-
-        $this->statisticsCollector
-            ->getStatistics()
-            ->then(function ($statistics) {
-                $this->assertCount(1, $statistics);
-            });
-
-        $this->statisticsCollector
-            ->getAppStatistics('1234')
-            ->then(function ($statistic) {
-                $this->assertEquals([
-                    'peak_connections_count' => 2,
-                    'websocket_messages_count' => 2,
-                    'api_messages_count' => 0,
-                    'app_id' => '1234',
-                ], $statistic->toArray());
-            });
     }
 
     public function test_local_connections_for_presence_channels()
@@ -274,8 +248,8 @@ class PresenceChannelTest extends TestCase
         $firstConnection = $this->newPresenceConnection('presence-channel', ['user_id' => '1']);
 
         // Make sure the observer sees a `member_added` event for `user:1`
-        $observerConnection->assertSentEvent('pusher_internal:member_added', [
-            'event' => 'pusher_internal:member_added',
+        $observerConnection->assertSentEvent('websocket_internal.member_added', [
+            'event' => 'websocket_internal.member_added',
             'channel' => 'presence-channel',
             'data' => json_encode(['user_id' => '1']),
         ])->resetEvents();
@@ -284,19 +258,19 @@ class PresenceChannelTest extends TestCase
         $secondConnection = $this->newPresenceConnection('presence-channel', ['user_id' => '1']);
 
         // Make sure the observer was not notified of a `member_added` event (user was already connected)
-        $observerConnection->assertNotSentEvent('pusher_internal:member_added');
+        $observerConnection->assertNotSentEvent('websocket_internal.member_added');
 
         // Disconnect the first socket for user `1` on the server
-        $this->pusherServer->onClose($firstConnection);
+        $this->wsHandler->onClose($firstConnection);
 
         // Make sure the observer was not notified of a `member_removed` event (user still connected on another socket)
-        $observerConnection->assertNotSentEvent('pusher_internal:member_removed');
+        $observerConnection->assertNotSentEvent('websocket_internal.member_removed');
 
         // Disconnect the second (and last) socket for user `1` on the server
-        $this->pusherServer->onClose($secondConnection);
+        $this->wsHandler->onClose($secondConnection);
 
         // Make sure the observer was notified of a `member_removed` event (last socket for user was disconnected)
-        $observerConnection->assertSentEvent('pusher_internal:member_removed');
+        $observerConnection->assertSentEvent('websocket_internal.member_removed');
 
         $this->channelManager
             ->getMemberSockets('1', '1234', 'presence-channel')
@@ -405,147 +379,5 @@ class PresenceChannelTest extends TestCase
                 $this->channelManager->getRedisKey('1234', 'presence-channel'),
                 $message->getPayload(),
             ]);
-    }
-
-    public function test_it_fires_the_event_to_presence_channel()
-    {
-        $this->newPresenceConnection('presence-channel');
-
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['presence-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        $this->statisticsCollector
-            ->getAppStatistics('1234')
-            ->then(function ($statistic) {
-                $this->assertEquals([
-                    'peak_connections_count' => 1,
-                    'websocket_messages_count' => 1,
-                    'api_messages_count' => 1,
-                    'app_id' => '1234',
-                ], $statistic->toArray());
-            });
-    }
-
-    public function test_it_fires_event_across_servers_when_there_are_not_users_locally_for_presence_channel()
-    {
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['presence-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        if (method_exists($this->channelManager, 'getPublishClient')) {
-            $this->channelManager
-                ->getPublishClient()
-                ->assertCalledWithArgsCount(1, 'publish', [
-                    $this->channelManager->getRedisKey('1234', 'presence-channel'),
-                    json_encode([
-                        'event' => 'some-event',
-                        'channel' => 'presence-channel',
-                        'data' => json_encode(['some-data' => 'yes']),
-                        'appId' => '1234',
-                        'socketId' => null,
-                        'serverId' => $this->channelManager->getServerId(),
-                    ]),
-                ]);
-        }
-    }
-
-    public function test_it_fires_event_across_servers_when_there_are_users_locally_for_presence_channel()
-    {
-        $wsConnection = $this->newPresenceConnection('presence-channel');
-
-        $connection = new Mocks\Connection;
-
-        $requestPath = '/apps/1234/events';
-
-        $routeParams = [
-            'appId' => '1234',
-        ];
-
-        $queryString = http_build_query(Pusher::build_auth_query_params(
-            'TestKey', 'TestSecret', 'POST', $requestPath, [
-                'name' => 'some-event',
-                'channels' => ['presence-channel'],
-                'data' => json_encode(['some-data' => 'yes']),
-            ],
-        ));
-
-        $request = new Request('POST', "{$requestPath}?{$queryString}&".http_build_query($routeParams));
-
-        $controller = app(TriggerEvent::class);
-
-        $controller->onOpen($connection, $request);
-
-        /** @var JsonResponse $response */
-        $response = array_pop($connection->sentRawData);
-
-        $this->assertSame([], json_decode($response->getContent(), true));
-
-        if (method_exists($this->channelManager, 'getPublishClient')) {
-            $this->channelManager
-                ->getPublishClient()
-                ->assertCalledWithArgsCount(1, 'publish', [
-                    $this->channelManager->getRedisKey('1234', 'presence-channel'),
-                    json_encode([
-                        'event' => 'some-event',
-                        'channel' => 'presence-channel',
-                        'data' => json_encode(['some-data' => 'yes']),
-                        'appId' => '1234',
-                        'socketId' => null,
-                        'serverId' => $this->channelManager->getServerId(),
-                    ]),
-                ]);
-        }
-
-        $wsConnection->assertSentEvent('some-event', [
-            'channel' => 'presence-channel',
-            'data' => json_encode(['some-data' => 'yes']),
-        ]);
     }
 }

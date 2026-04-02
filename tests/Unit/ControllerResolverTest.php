@@ -3,11 +3,11 @@
 namespace BlaxSoftware\LaravelWebSockets\Tests\Unit;
 
 use BlaxSoftware\LaravelWebSockets\Websocket\ControllerResolver;
-use PHPUnit\Framework\TestCase;
+use BlaxSoftware\LaravelWebSockets\Test\TestCase;
 
 class ControllerResolverTest extends TestCase
 {
-    protected function setUp(): void
+    public function setUp(): void
     {
         parent::setUp();
         ControllerResolver::clearCache();
@@ -26,18 +26,24 @@ class ControllerResolverTest extends TestCase
     /** @test */
     public function it_caches_resolved_controllers()
     {
+        // Disable hot_reload so caching is used
+        config()->set('websockets.hot_reload', false);
+        ControllerResolver::clearCache();
+
         // First call resolves and caches
         ControllerResolver::resolve('pusher');
 
         $stats = ControllerResolver::getStats();
-        // scanned may or may not be true (we no longer auto-scan on resolve)
-        // but cached should be > 0
         $this->assertGreaterThan(0, $stats['cached']);
     }
 
     /** @test */
     public function it_caches_null_for_nonexistent_controllers()
     {
+        // Disable hot_reload so caching is used
+        config()->set('websockets.hot_reload', false);
+        ControllerResolver::clearCache();
+
         // First call - not found
         $result1 = ControllerResolver::resolve('nonexistent-controller-xyz');
         $this->assertNull($result1);

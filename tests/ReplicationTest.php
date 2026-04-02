@@ -27,7 +27,7 @@ class ReplicationTest extends TestCase
     {
         $connection = $this->newActiveConnection(['public-channel']);
 
-        $this->pusherServer->onClose($connection);
+        $this->wsHandler->onClose($connection);
 
         $this->getSubscribeClient()
             ->assertCalledWithArgs('unsubscribe', [$this->channelManager->getRedisKey('1234')])

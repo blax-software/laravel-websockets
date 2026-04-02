@@ -133,7 +133,7 @@ class WebsocketService
 
             // Subscribe (public channel)
             $client->send(json_encode([
-                'event' => 'pusher:subscribe',
+                'event' => 'websocket.subscribe',
                 'data'  => ['channel' => 'websocket'],
             ]));
 

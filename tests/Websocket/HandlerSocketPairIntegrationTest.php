@@ -13,7 +13,7 @@ use BlaxSoftware\LaravelWebSockets\Test\TestCase;
  *
  * These tests verify that the complete message flow works correctly when using
  * the event-driven socket pair IPC mechanism. Unlike the isolated IPC tests,
- * these tests use the actual Handler with pusherServer->onMessage().
+ * these tests use the actual Handler with wsHandler->onMessage().
  *
  * Note: These tests require pcntl_fork() and socket_create_pair() to be available.
  */
@@ -41,14 +41,14 @@ class HandlerSocketPairIntegrationTest extends TestCase
         $connection = $this->newActiveConnection(['public-channel']);
 
         $message = new Mocks\Message([
-            'event' => 'pusher.ping',
+            'event' => 'websocket.ping',
         ]);
 
         $startTime = hrtime(true);
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
         $elapsed = (hrtime(true) - $startTime) / 1_000_000; // ms
 
-        $connection->assertSentEvent('pusher.pong');
+        $connection->assertSentEvent('websocket.pong');
 
         // Fast path should be very fast (< 15ms typically)
         $this->assertLessThan(15, $elapsed, "Ping/pong took {$elapsed}ms - should be < 15ms for fast path");
@@ -71,7 +71,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
             'channel' => 'test-channel',
         ]);
 
-        $this->pusherServer->onMessage($sender, $message);
+        $this->wsHandler->onMessage($sender, $message);
 
         // Sender should NOT receive their own whisper
         $sender->assertNotSentEvent('client-test-event');
@@ -85,7 +85,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
 
     /**
      * Test channel subscription sends connection established event.
-     * Note: The pusher_internal:subscription_succeeded event has pre-existing
+     * Note: The websocket_internal.subscription_succeeded event has pre-existing
      * issues in the test framework (channel->hasConnection check).
      */
     public function test_channel_connection_established()
@@ -93,7 +93,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
         $connection = $this->newActiveConnection(['my-channel']);
 
         // Verify connection established was sent (this always works)
-        $connection->assertSentEvent('pusher.connection_established');
+        $connection->assertSentEvent('websocket.connection_established');
     }
 
     /**
@@ -113,7 +113,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
             'channel' => 'broadcast-channel',
         ]);
 
-        $this->pusherServer->onMessage($alice, $message);
+        $this->wsHandler->onMessage($alice, $message);
 
         // Alice (sender) should NOT receive
         $alice->assertNotSentEvent('client-hello');
@@ -136,7 +136,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
     {
         $connection = $this->newActiveConnection(['test-channel']);
 
-        $connection->assertSentEvent('pusher.connection_established', [
+        $connection->assertSentEvent('websocket.connection_established', [
             'data' => json_encode([
                 'socket_id' => $connection->socketId,
                 'activity_timeout' => 30,
@@ -146,7 +146,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
 
     /**
      * Test subscribing to multiple channels via separate connections.
-     * Note: pusher_internal:subscription_succeeded has pre-existing test issues.
+     * Note: websocket_internal.subscription_succeeded has pre-existing test issues.
      */
     public function test_subscribe_to_multiple_channels_separately()
     {
@@ -156,9 +156,9 @@ class HandlerSocketPairIntegrationTest extends TestCase
         $connC = $this->newActiveConnection(['channel-c']);
 
         // Each should have received connection established
-        $connA->assertSentEvent('pusher.connection_established');
-        $connB->assertSentEvent('pusher.connection_established');
-        $connC->assertSentEvent('pusher.connection_established');
+        $connA->assertSentEvent('websocket.connection_established');
+        $connB->assertSentEvent('websocket.connection_established');
+        $connC->assertSentEvent('websocket.connection_established');
     }
 
     /**
@@ -178,7 +178,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
                 'data' => ['count' => $i],
                 'channel' => 'rapid-channel',
             ]);
-            $this->pusherServer->onMessage($sender, $message);
+            $this->wsHandler->onMessage($sender, $message);
         }
 
         // At least one message should be received by receiver
@@ -199,7 +199,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
 
         // This should not throw an exception - should handle gracefully
         try {
-            $this->pusherServer->onMessage($connection, $message);
+            $this->wsHandler->onMessage($connection, $message);
         } catch (\JsonException $e) {
             // Expected - Handler may throw JsonException for invalid JSON
             $this->assertTrue(true);
@@ -227,7 +227,7 @@ class HandlerSocketPairIntegrationTest extends TestCase
             'channel' => 'channel-A',
         ]);
 
-        $this->pusherServer->onMessage($channelA_User1, $message);
+        $this->wsHandler->onMessage($channelA_User1, $message);
 
         // Only channel-A users should receive
         $channelA_User2->assertSentEvent('client-isolated');

@@ -43,7 +43,7 @@ class HandlerForkPathTest extends TestCase
 
         // The handler should automatically use socket pair IPC
         // We can verify this by checking the handler was created successfully
-        $this->assertNotNull($this->pusherServer);
+        $this->assertNotNull($this->wsHandler);
     }
 
     /**
@@ -54,18 +54,18 @@ class HandlerForkPathTest extends TestCase
         $connection = $this->newActiveConnection(['fork-test-channel']);
 
         // Verify connection was established (subscription event has pre-existing test issues)
-        $connection->assertSentEvent('pusher.connection_established');
+        $connection->assertSentEvent('websocket.connection_established');
 
         // Now unsubscribe
         $message = new Mocks\Message([
-            'event' => 'pusher:unsubscribe',
+            'event' => 'websocket.unsubscribe',
             'data' => ['channel' => 'fork-test-channel'],
         ]);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
         // No error should be sent
-        $connection->assertNotSentEvent('pusher:unsubscribe:error');
+        $connection->assertNotSentEvent('websocket.unsubscribe:error');
     }
 
     /**
@@ -82,7 +82,7 @@ class HandlerForkPathTest extends TestCase
             'channel' => 'channel-two', // Not subscribed!
         ]);
 
-        $this->pusherServer->onMessage($connection, $message);
+        $this->wsHandler->onMessage($connection, $message);
 
         // Should receive an error event
         $connection->assertSentEvent('custom.action:error');
@@ -99,17 +99,17 @@ class HandlerForkPathTest extends TestCase
         for ($i = 0; $i < 5; $i++) {
             // Unsubscribe
             $unsubMsg = new Mocks\Message([
-                'event' => 'pusher:unsubscribe',
+                'event' => 'websocket.unsubscribe',
                 'data' => ['channel' => 'cycle-channel'],
             ]);
-            $this->pusherServer->onMessage($connection, $unsubMsg);
+            $this->wsHandler->onMessage($connection, $unsubMsg);
 
             // Resubscribe
             $subMsg = new Mocks\Message([
-                'event' => 'pusher:subscribe',
+                'event' => 'websocket.subscribe',
                 'data' => ['channel' => 'cycle-channel'],
             ]);
-            $this->pusherServer->onMessage($connection, $subMsg);
+            $this->wsHandler->onMessage($connection, $subMsg);
         }
 
         // No errors should have been sent
@@ -149,7 +149,7 @@ class HandlerForkPathTest extends TestCase
             'channel' => 'empty-data-channel',
         ]);
 
-        $this->pusherServer->onMessage($sender, $message);
+        $this->wsHandler->onMessage($sender, $message);
 
         $receiver->assertSentEvent('client-empty', [
             'data' => [],
@@ -172,19 +172,19 @@ class HandlerForkPathTest extends TestCase
     }
 
     /**
-     * Test pusher: prefixed events receive response.
+     * Test that ping/pong works correctly.
      */
-    public function test_pusher_prefixed_events_handled()
+    public function test_ping_pong_handled()
     {
         $connection = $this->newActiveConnection(['pusher-event-channel']);
 
         // Ping should work
         $pingMsg = new Mocks\Message([
-            'event' => 'pusher.ping',
+            'event' => 'websocket.ping',
         ]);
 
-        $this->pusherServer->onMessage($connection, $pingMsg);
-        $connection->assertSentEvent('pusher.pong');
+        $this->wsHandler->onMessage($connection, $pingMsg);
+        $connection->assertSentEvent('websocket.pong');
     }
 
     /**
@@ -204,7 +204,7 @@ class HandlerForkPathTest extends TestCase
             'channel' => 'no-whisper-channel',
         ]);
 
-        $this->pusherServer->onMessage($sender, $message);
+        $this->wsHandler->onMessage($sender, $message);
 
         // Neither should receive (whisper blocked)
         $sender->assertNotSentEvent('client-blocked');

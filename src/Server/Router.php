@@ -71,10 +71,6 @@ class Router
     public function registerRoutes()
     {
         $this->get('/app/{appKey}', 'websockets.handler');
-        $this->post('/apps/{appId}/events', config('websockets.handlers.trigger_event'));
-        $this->get('/apps/{appId}/channels', config('websockets.handlers.fetch_channels'));
-        $this->get('/apps/{appId}/channels/{channelName}', config('websockets.handlers.fetch_channel'));
-        $this->get('/apps/{appId}/channels/{channelName}/users', config('websockets.handlers.fetch_users'));
         $this->get('/health', config('websockets.handlers.health'));
 
         $this->registerCustomRoutes();

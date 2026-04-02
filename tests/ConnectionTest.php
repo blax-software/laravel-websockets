@@ -16,23 +16,7 @@ class ConnectionTest extends TestCase
         $this->startServer();
 
         $response = $this->await($this->joinWebSocketServer(['public-channel'], 'NonWorkingKey'));
-        $this->assertSame('{"event":"pusher.error","data":{"message":"Could not find app key `NonWorkingKey`.","code":4001}}', (string) $response);
-    }
-
-    /**
-     * @group integration
-     * @group requires-server
-     */
-    public function test_unconnected_app_cannot_store_statistics()
-    {
-        $this->skipIfServerUnavailable();
-        $this->startServer();
-
-        $response = $this->await($this->joinWebSocketServer(['public-channel'], 'NonWorkingKey'));
-        $this->assertSame('{"event":"pusher.error","data":{"message":"Could not find app key `NonWorkingKey`.","code":4001}}', (string) $response);
-
-        $count = $this->await($this->statisticsCollector->getStatistics());
-        $this->assertCount(0, $count);
+        $this->assertSame('{"event":"websocket.error","data":{"message":"Could not find app key `NonWorkingKey`.","code":4001}}', (string) $response);
     }
 
     /**
@@ -45,7 +29,7 @@ class ConnectionTest extends TestCase
         $this->startServer();
 
         $response = $this->await($this->joinWebSocketServer(['public-channel'], 'TestOrigin'));
-        $this->assertSame('{"event":"pusher.error","data":{"message":"The origin is not allowed for `TestOrigin`.","code":4009}}', (string) $response);
+        $this->assertSame('{"event":"websocket.error","data":{"message":"The origin is not allowed for `TestOrigin`.","code":4009}}', (string) $response);
     }
 
     /**
@@ -58,16 +42,16 @@ class ConnectionTest extends TestCase
         $this->startServer();
 
         $response = $this->await($this->joinWebSocketServer(['public-channel'], 'TestOrigin', ['Origin' => 'https://google.ro']));
-        $this->assertSame('{"event":"pusher.error","data":{"message":"The origin is not allowed for `TestOrigin`.","code":4009}}', (string) $response);
+        $this->assertSame('{"event":"websocket.error","data":{"message":"The origin is not allowed for `TestOrigin`.","code":4009}}', (string) $response);
     }
 
     public function test_origin_validation_should_pass_for_the_right_origin()
     {
         $connection = $this->newConnection('TestOrigin', ['Origin' => 'https://test.origin.com']);
 
-        $this->pusherServer->onOpen($connection);
+        $this->wsHandler->onOpen($connection);
 
-        $connection->assertSentEvent('pusher.connection_established');
+        $connection->assertSentEvent('websocket.connection_established');
     }
 
     public function test_close_connection()
@@ -86,7 +70,7 @@ class ConnectionTest extends TestCase
                 $this->assertEquals(1, $total);
             });
 
-        $this->pusherServer->onClose($connection);
+        $this->wsHandler->onClose($connection);
 
         $this->channelManager
             ->getGlobalConnectionsCount('1234')
@@ -105,9 +89,9 @@ class ConnectionTest extends TestCase
     {
         $connection = $this->newActiveConnection(['public-channel']);
 
-        $this->pusherServer->onError($connection, new UnknownAppKey('NonWorkingKey'));
+        $this->wsHandler->onError($connection, new UnknownAppKey('NonWorkingKey'));
 
-        $connection->assertSentEvent('pusher.error', [
+        $connection->assertSentEvent('websocket.error', [
             'data' => [
                 'message' => 'Could not find app key `NonWorkingKey`.',
                 'code' => 4001,
@@ -125,15 +109,15 @@ class ConnectionTest extends TestCase
         $failedConnection = $this->newActiveConnection(['test-channel']);
 
         $failedConnection
-            ->assertSentEvent('pusher.error', ['data' => ['message' => 'Over capacity', 'code' => 4100]])
+            ->assertSentEvent('websocket.error', ['data' => ['message' => 'Over capacity', 'code' => 4100]])
             ->assertClosed();
     }
 
     public function test_close_all_new_connections_after_stating_the_server_does_not_accept_new_connections()
     {
         $this->newActiveConnection(['test-channel'])
-            ->assertSentEvent('pusher.connection_established')
-            ->assertSentEvent('pusher_internal:subscription_succeeded');
+            ->assertSentEvent('websocket.connection_established')
+            ->assertSentEvent('websocket_internal.subscription_succeeded');
 
         $this->channelManager->declineNewConnections();
 

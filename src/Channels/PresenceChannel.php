@@ -2,9 +2,6 @@
 
 namespace BlaxSoftware\LaravelWebSockets\Channels;
 
-use BlaxSoftware\LaravelWebSockets\DashboardLogger;
-use BlaxSoftware\LaravelWebSockets\Events\SubscribedToChannel;
-use BlaxSoftware\LaravelWebSockets\Events\UnsubscribedFromChannel;
 use BlaxSoftware\LaravelWebSockets\Helpers;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\InvalidSignature;
 use Ratchet\ConnectionInterface;
@@ -45,7 +42,7 @@ class PresenceChannel extends PrivateChannel
                         }
 
                         $connection->send(json_encode([
-                            'event' => 'pusher_internal:subscription_succeeded',
+                            'event' => 'websocket_internal.subscription_succeeded',
                             'channel' => $this->getName(),
                             'data' => json_encode([
                                 'presence' => [
@@ -60,7 +57,7 @@ class PresenceChannel extends PrivateChannel
                     });
             })
             ->then(function () use ($connection, $user, $payload) {
-                // The `pusher_internal:member_added` event is triggered when a user joins a channel.
+                // The `websocket_internal.member_added` event is triggered when a user joins a channel.
                 // It's quite possible that a user can have multiple connections to the same channel
                 // (for example by having multiple browser tabs open)
                 // and in this case the events will only be triggered when the first tab is opened.
@@ -69,7 +66,7 @@ class PresenceChannel extends PrivateChannel
                     ->then(function ($sockets) use ($payload, $connection, $user) {
                         if (count($sockets) === 1) {
                             $memberAddedPayload = [
-                                'event' => 'pusher_internal:member_added',
+                                'event' => 'websocket_internal.member_added',
                                 'channel' => $this->getName(),
                                 'data' => $payload->channel_data,
                             ];
@@ -78,20 +75,7 @@ class PresenceChannel extends PrivateChannel
                                 (object) $memberAddedPayload, $connection->socketId,
                                 $connection->app->id
                             );
-
-                            SubscribedToChannel::dispatch(
-                                $connection->app->id,
-                                $connection->socketId,
-                                $this->getName(),
-                                $user
-                            );
                         }
-
-                        DashboardLogger::log($connection->app->id, DashboardLogger::TYPE_SUBSCRIBED, [
-                            'socketId' => $connection->socketId,
-                            'channel' => $this->getName(),
-                            'duplicate-connection' => count($sockets) > 1,
-                        ]);
                     });
             });
 
@@ -121,7 +105,7 @@ class PresenceChannel extends PrivateChannel
                 return $this->channelManager
                     ->userLeftPresenceChannel($connection, $user, $this->getName())
                     ->then(function () use ($connection, $user) {
-                        // The `pusher_internal:member_removed` is triggered when a user leaves a channel.
+                        // The `websocket_internal.member_removed` is triggered when a user leaves a channel.
                         // It's quite possible that a user can have multiple connections to the same channel
                         // (for example by having multiple browser tabs open)
                         // and in this case the events will only be triggered when the last one is closed.
@@ -130,7 +114,7 @@ class PresenceChannel extends PrivateChannel
                             ->then(function ($sockets) use ($connection, $user) {
                                 if (count($sockets) === 0) {
                                     $memberRemovedPayload = [
-                                        'event' => 'pusher_internal:member_removed',
+                                        'event' => 'websocket_internal.member_removed',
                                         'channel' => $this->getName(),
                                         'data' => json_encode([
                                             'user_id' => $user->user_id,
@@ -140,13 +124,6 @@ class PresenceChannel extends PrivateChannel
                                     $this->broadcastToEveryoneExcept(
                                         (object) $memberRemovedPayload, $connection->socketId,
                                         $connection->app->id
-                                    );
-
-                                    UnsubscribedFromChannel::dispatch(
-                                        $connection->app->id,
-                                        $connection->socketId,
-                                        $this->getName(),
-                                        $user
                                     );
                                 }
                             });

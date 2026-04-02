@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace BlaxSoftware\LaravelWebSockets\Websocket;
 
 use BlaxSoftware\LaravelWebSockets\ChannelManagers\LocalChannelManager;
-use BlaxSoftware\LaravelWebSockets\DashboardLogger;
 use BlaxSoftware\LaravelWebSockets\Helpers;
 use BlaxSoftware\LaravelWebSockets\Server\MockableConnection;
 use Carbon\Carbon;
@@ -397,14 +396,6 @@ class ChannelManager extends LocalChannelManager
         $socketId = $payload->socketId ?? null;
         $serverId = $payload->serverId ?? null;
 
-        DashboardLogger::log($appId, DashboardLogger::TYPE_REPLICATOR_MESSAGE_RECEIVED, [
-            'fromServerId' => $serverId,
-            'fromSocketId' => $socketId,
-            'receiverServerId' => $this->getServerId(),
-            'channel' => $channel,
-            'payload' => $payload,
-        ]);
-
         unset($payload->socketId, $payload->serverId, $payload->appId);
 
         $channel->broadcastLocallyToEveryoneExcept($payload, $socketId, $appId);
@@ -604,11 +595,6 @@ class ChannelManager extends LocalChannelManager
     {
         $topic = $this->getRedisTopicName($appId, $channel);
 
-        DashboardLogger::log($appId, DashboardLogger::TYPE_REPLICATOR_SUBSCRIBED, [
-            'serverId' => $this->getServerId(),
-            'pubsubTopic' => $topic,
-        ]);
-
         return $this->subscribeClient->subscribe($topic);
     }
 
@@ -620,11 +606,6 @@ class ChannelManager extends LocalChannelManager
     public function unsubscribeFromTopic($appId, ?string $channel = null) : PromiseInterface
     {
         $topic = $this->getRedisTopicName($appId, $channel);
-
-        DashboardLogger::log($appId, DashboardLogger::TYPE_REPLICATOR_UNSUBSCRIBED, [
-            'serverId' => $this->getServerId(),
-            'pubsubTopic' => $topic,
-        ]);
 
         return $this->subscribeClient->unsubscribe($topic);
     }
