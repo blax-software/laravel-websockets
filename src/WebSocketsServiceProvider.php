@@ -58,6 +58,7 @@ class WebSocketsServiceProvider extends ServiceProvider
             Console\Commands\StartServer::class,
             Console\Commands\RestartServer::class,
             Console\Commands\SteerServer::class,
+            Console\Commands\ServerInfo::class,
         ]);
     }
 
