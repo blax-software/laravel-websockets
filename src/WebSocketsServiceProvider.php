@@ -25,6 +25,7 @@ class WebSocketsServiceProvider extends ServiceProvider
             __DIR__ . '/Websocket' => app_path('Websocket')
         ]);
 
+        $this->registerWebsocketLogChannel();
         $this->registerDefaultWebsocketChannels();
         $this->registerEventLoop();
         $this->registerWebSocketHandler();
@@ -82,6 +83,19 @@ class WebSocketsServiceProvider extends ServiceProvider
     {
         if (! Route::has('broadcasting/auth')) {
             $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
+        }
+    }
+
+    protected function registerWebsocketLogChannel()
+    {
+        // Register a dedicated 'websocket' log channel if the app hasn't defined one
+        if (! config('logging.channels.websocket')) {
+            config(['logging.channels.websocket' => [
+                'driver' => 'daily',
+                'path' => storage_path('logs/websocket.log'),
+                'level' => 'debug',
+                'days' => 7,
+            ]]);
         }
     }
 

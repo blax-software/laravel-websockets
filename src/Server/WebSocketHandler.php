@@ -9,6 +9,7 @@ use BlaxSoftware\LaravelWebSockets\Events\NewConnection;
 use BlaxSoftware\LaravelWebSockets\Helpers;
 use BlaxSoftware\LaravelWebSockets\Server\Exceptions\WebSocketException;
 use Exception;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Ratchet\ConnectionInterface;
 use Ratchet\RFC6455\Messaging\MessageInterface;
@@ -45,6 +46,7 @@ class WebSocketHandler implements MessageComponentInterface
     public function onOpen(ConnectionInterface $connection)
     {
         if (! $this->connectionCanBeMade($connection)) {
+            $this->wsLog('warning', 'Connection rejected: server not accepting new connections');
             return $connection->close();
         }
 
@@ -63,6 +65,8 @@ class WebSocketHandler implements MessageComponentInterface
                         $this->channelManager->subscribeToApp($connection->app->id);
 
                         $this->channelManager->connectionPonged($connection);
+
+                        $this->wsLog('info', "[{$connection->app->id}][{$connection->socketId}] Connection established (key: {$connection->app->key})");
 
                         NewConnection::dispatch($connection->app->id, $connection->socketId);
                     }
@@ -84,6 +88,7 @@ class WebSocketHandler implements MessageComponentInterface
     public function onMessage(ConnectionInterface $connection, MessageInterface $message)
     {
         if (! isset($connection->app)) {
+            $this->wsLog('warning', 'Message dropped: connection has no app (likely failed auth). Payload: '.Str::limit($message->getPayload(), 200));
             return;
         }
 
@@ -170,6 +175,10 @@ class WebSocketHandler implements MessageComponentInterface
                 $exception->getPayload()
             ));
         }
+
+        $appId = $connection->app->id ?? 'unknown';
+        $socketId = $connection->socketId ?? 'unknown';
+        $this->wsLog('error', "[{$appId}][{$socketId}] {$exception->getMessage()}");
     }
 
     /**
@@ -201,6 +210,7 @@ class WebSocketHandler implements MessageComponentInterface
         App::findByKey($appKey)
             ->then(function ($app) use ($appKey, $connection, $deferred) {
                 if (! $app) {
+                    $this->wsLog('error', "Unknown app key: '{$appKey}'. Check that PUSHER_APP_KEY in .env matches the key used by the frontend. Configured apps: ".implode(', ', array_map(fn ($a) => $a['key'] ?? 'null', config('websockets.apps', []))));
                     $deferred->reject(new Exceptions\UnknownAppKey($appKey));
                 }
 
@@ -305,5 +315,19 @@ class WebSocketHandler implements MessageComponentInterface
     protected function isProtocolAction(string $event, string $action): bool
     {
         return str_ends_with($event, '.' . $action) || str_ends_with($event, ':' . $action);
+    }
+
+    /**
+     * Log a WebSocket server message.
+     * Uses the 'websocket' channel if configured, falls back to the default channel.
+     */
+    protected function wsLog(string $level, string $message): void
+    {
+        try {
+            $channel = config('logging.channels.websocket') ? 'websocket' : config('logging.default');
+            Log::channel($channel)->log($level, '[WebSocket] '.$message);
+        } catch (\Throwable) {
+            // Logging must never break the server
+        }
     }
 }

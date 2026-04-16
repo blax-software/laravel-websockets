@@ -2,6 +2,7 @@
 
 namespace BlaxSoftware\LaravelWebSockets\Server\Loggers;
 
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Console\Formatter\OutputFormatterStyle;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -15,14 +16,14 @@ class Logger
     protected $consoleOutput;
 
     /**
-     * Wether the logger is enabled.
+     * Whether the logger is enabled.
      *
      * @var bool
      */
     protected $enabled = false;
 
     /**
-     * Wether the verbose mode is on.
+     * Whether the verbose mode is on.
      *
      * @var bool
      */
@@ -116,10 +117,38 @@ class Logger
         $this->line($message, 'error');
     }
 
+    /**
+     * Write a message to the console and persist it to the websocket log file.
+     */
     protected function line(string $message, string $style)
     {
+        // Console output (existing behavior)
         $this->consoleOutput->writeln(
             $style ? "<{$style}>{$message}</{$style}>" : $message
         );
+
+        // Also persist to log file so errors are visible outside the console
+        $this->fileLog($style, $message);
+    }
+
+    /**
+     * Write a message to the websocket log channel.
+     * Uses the 'websocket' channel if available, falls back to the default.
+     */
+    protected function fileLog(string $level, string $message): void
+    {
+        // Map console styles to log levels
+        $logLevel = match ($level) {
+            'error' => 'error',
+            'warning' => 'warning',
+            default => 'info',
+        };
+
+        try {
+            $channel = config('logging.channels.websocket') ? 'websocket' : null;
+            Log::channel($channel)->log($logLevel, '[WebSocket] '.$message);
+        } catch (\Throwable) {
+            // Logging must never crash the WS server
+        }
     }
 }
