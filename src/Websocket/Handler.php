@@ -632,7 +632,7 @@ class Handler implements MessageComponentInterface
 
                 // Persist session changes to Redis before exit
                 $session->save();
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 // Send error via socket pair
                 $ipc->sendToParent(json_encode([
                     'event' => $message['event'] . ':error',
@@ -640,7 +640,7 @@ class Handler implements MessageComponentInterface
                 ]));
 
                 // Log DB connection failures specifically for monitoring
-                if ($this->isDbConnectionError($e)) {
+                if ($e instanceof Exception && $this->isDbConnectionError($e)) {
                     Log::channel('websocket')->error('DB connection failure in child process', [
                         'error' => $e->getMessage(),
                         'event' => $message['event'] ?? 'unknown',

@@ -317,7 +317,14 @@ class ControllerResolver
                 $fullClass = $namespace . $subNamespace . $fileName;
 
                 // Verify the class exists (triggers autoload)
-                if (class_exists($fullClass, true)) {
+                // Wrapped in try-catch: if a file's namespace doesn't match
+                // its path, autoloading can trigger a class redeclaration error.
+                try {
+                    $exists = class_exists($fullClass, true);
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                if ($exists) {
                     // Store with lowercase key for case-insensitive lookup
                     $key = strtolower($fileName);
                     self::$availableControllers[$key] = $fullClass;

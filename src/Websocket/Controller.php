@@ -512,7 +512,12 @@ class Controller
                 if (isset($seen[$fullClass])) continue;
                 $seen[$fullClass] = true;
 
-                if (! class_exists($fullClass, true)) continue;
+                try {
+                    if (! class_exists($fullClass, true)) continue;
+                } catch (\Throwable $e) {
+                    // Class redeclaration or autoload error (e.g. namespace mismatch) — skip
+                    continue;
+                }
                 if (! is_subclass_of($fullClass, self::class)) continue;
 
                 // Derive event prefix from class name
