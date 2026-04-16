@@ -59,6 +59,12 @@ class Controller
         LocalChannelManager $channelManager
     ) {
         $event = self::get_event($message);
+
+        // Introspection: single-part event like "auth" or "websocket"
+        if (count($event) === 1) {
+            return self::handleIntrospection($connection, $message, $event[0]);
+        }
+
         if (count($event) !== 2) {
             return self::send_error($connection, $message, 'Event unknown');
         }
@@ -338,6 +344,184 @@ class Controller
                 }
             }
         });
+    }
+
+    /**
+     * Handle introspection requests (dev-only).
+     *
+     * - `websocket` → list all controllers and their methods
+     * - `auth` → list all methods on AuthController
+     */
+    private static function handleIntrospection(
+        ConnectionInterface $connection,
+        array $message,
+        string $prefix
+    ) {
+        // Only allow in local environment or when explicitly enabled
+        $allowed = config('websockets.introspection', false)
+            || app()->environment('local');
+
+        if (! $allowed) {
+            return self::send_error($connection, $message, 'Introspection disabled');
+        }
+
+        $prefix = static::without_uniquifyer($prefix);
+
+        // Special case: "websocket" lists all controllers
+        if ($prefix === 'websocket') {
+            $controllers = self::introspectAllControllers();
+            $connection->send(json_encode([
+                'event' => ($message['event'] ?? 'websocket') . ':response',
+                'data' => $controllers,
+                'channel' => $message['channel'] ?? null,
+            ]));
+            return $controllers;
+        }
+
+        // Specific controller: "auth" → AuthController
+        $controllerClass = ControllerResolver::resolve($prefix);
+        if (! $controllerClass) {
+            return self::send_error($connection, $message, "No controller found for '{$prefix}'");
+        }
+
+        $info = self::introspectController($controllerClass, $prefix);
+        $connection->send(json_encode([
+            'event' => ($message['event'] ?? $prefix) . ':response',
+            'data' => $info,
+            'channel' => $message['channel'] ?? null,
+        ]));
+        return $info;
+    }
+
+    /**
+     * Introspect a single controller: list public methods, auth, lifecycle.
+     */
+    private static function introspectController(string $controllerClass, string $prefix): array
+    {
+        $reflection = new \ReflectionClass($controllerClass);
+        $needAuth = true;
+
+        // Check need_auth property
+        if ($reflection->hasProperty('need_auth')) {
+            $prop = $reflection->getProperty('need_auth');
+            $needAuth = $prop->getDefaultValue() ?? true;
+        }
+
+        // Check lifecycle methods
+        $hasBoot = $reflection->getMethod('boot')->getDeclaringClass()->getName() !== self::class;
+        $hasBooted = $reflection->getMethod('booted')->getDeclaringClass()->getName() !== self::class;
+        $hasUnboot = $reflection->getMethod('unboot')->getDeclaringClass()->getName() !== self::class;
+
+        // Collect public non-inherited, non-magic methods
+        $baseMethods = get_class_methods(self::class);
+        $methods = [];
+        foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+            $name = $method->getName();
+
+            // Skip inherited base methods, constructors, and magic methods
+            if (in_array($name, $baseMethods, true)) continue;
+            if (str_starts_with($name, '__')) continue;
+            if ($method->isStatic()) continue;
+
+            $info = ['name' => $name, 'event' => "{$prefix}.{$name}"];
+
+            // Add parameter names (skip $connection, $data, $channel)
+            $params = [];
+            foreach ($method->getParameters() as $i => $param) {
+                if ($i < 3) continue; // skip standard ($connection, $data, $channel)
+                $params[] = '$' . $param->getName();
+            }
+            if ($params) $info['extra_params'] = $params;
+
+            $methods[] = $info;
+        }
+
+        return [
+            'controller' => $controllerClass,
+            'prefix' => $prefix,
+            'need_auth' => $needAuth,
+            'lifecycle' => array_filter([
+                'boot' => $hasBoot,
+                'booted' => $hasBooted,
+                'unboot' => $hasUnboot,
+            ]),
+            'methods' => $methods,
+        ];
+    }
+
+    /**
+     * Scan and introspect all available controllers.
+     */
+    private static function introspectAllControllers(): array
+    {
+        // Ensure controllers are scanned
+        ControllerResolver::scanControllers();
+
+        $result = [];
+        $seen = [];
+
+        // Scan app controllers directory
+        $appPath = function_exists('app_path')
+            ? app_path('Websocket/Controllers')
+            : null;
+
+        if ($appPath && is_dir($appPath)) {
+            self::scanControllersInPath($appPath, '\\App\\Websocket\\Controllers\\', $result, $seen);
+        }
+
+        // Scan vendor controllers
+        $vendorPath = __DIR__ . '/Controllers';
+        if (is_dir($vendorPath)) {
+            self::scanControllersInPath($vendorPath, '\\BlaxSoftware\\LaravelWebSockets\\Websocket\\Controllers\\', $result, $seen);
+        }
+
+        return [
+            'controllers' => $result,
+            'total' => count($result),
+        ];
+    }
+
+    /**
+     * Recursively scan a directory for controllers and introspect them.
+     */
+    private static function scanControllersInPath(
+        string $path,
+        string $namespace,
+        array &$result,
+        array &$seen,
+        string $subNamespace = ''
+    ): void {
+        $iterator = new \DirectoryIterator($path);
+
+        foreach ($iterator as $item) {
+            if ($item->isDot()) continue;
+
+            if ($item->isDir()) {
+                self::scanControllersInPath(
+                    $item->getPathname(),
+                    $namespace,
+                    $result,
+                    $seen,
+                    $subNamespace . $item->getFilename() . '\\'
+                );
+            } elseif ($item->isFile() && $item->getExtension() === 'php') {
+                $className = $item->getBasename('.php');
+                if (! str_ends_with($className, 'Controller')) continue;
+
+                $fullClass = $namespace . $subNamespace . $className;
+                if (isset($seen[$fullClass])) continue;
+                $seen[$fullClass] = true;
+
+                if (! class_exists($fullClass, true)) continue;
+                if (! is_subclass_of($fullClass, self::class)) continue;
+
+                // Derive event prefix from class name
+                $shortName = str_replace('Controller', '', $className);
+                $prefix = strtolower(preg_replace('/([a-z])([A-Z])/', '$1-$2', $shortName));
+
+                $result[] = self::introspectController($fullClass, $prefix);
+            }
+        }
     }
 
     private static function send_error(

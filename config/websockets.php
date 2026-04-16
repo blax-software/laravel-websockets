@@ -26,6 +26,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Introspection (Development Only)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, sending an event with only a controller prefix (e.g.
+    | "auth" or "websocket") returns a list of available methods, auth
+    | requirements, and lifecycle hooks. Useful for debugging.
+    |
+    | Always allowed in 'local' environment. Set to true to enable in
+    | other environments (e.g. staging). Never enable in production.
+    |
+    */
+    'introspection' => env('WEBSOCKET_INTROSPECTION', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Max Concurrent Children (Fork Limit)
     |--------------------------------------------------------------------------
     |
