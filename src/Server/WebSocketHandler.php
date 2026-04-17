@@ -88,7 +88,7 @@ class WebSocketHandler implements MessageComponentInterface
     public function onMessage(ConnectionInterface $connection, MessageInterface $message)
     {
         if (! isset($connection->app)) {
-            $this->wsLog('warning', 'Message dropped: connection has no app (likely failed auth). Payload: '.Str::limit($message->getPayload(), 200));
+            $this->wsLog('warning', 'Message dropped: connection has no app (likely failed auth). Payload: ' . Str::limit($message->getPayload(), 200));
             return;
         }
 
@@ -129,7 +129,10 @@ class WebSocketHandler implements MessageComponentInterface
                 $ch = $this->channelManager->find($connection->app->id, $channel);
                 if ($ch) {
                     $ch->broadcastToEveryoneExcept(
-                        $payload, $connection->socketId, $connection->app->id, false
+                        $payload,
+                        $connection->socketId,
+                        $connection->app->id,
+                        false
                     );
                 }
             }
@@ -210,7 +213,7 @@ class WebSocketHandler implements MessageComponentInterface
         App::findByKey($appKey)
             ->then(function ($app) use ($appKey, $connection, $deferred) {
                 if (! $app) {
-                    $this->wsLog('error', "Unknown app key: '{$appKey}'. Check that PUSHER_APP_KEY in .env matches the key used by the frontend. Configured apps: ".implode(', ', array_map(fn ($a) => $a['key'] ?? 'null', config('websockets.apps', []))));
+                    $this->wsLog('error', "Unknown app key: '{$appKey}'. Check that PUSHER_APP_KEY in .env matches the key used by the frontend. Configured apps: " . implode(', ', array_map(fn($a) => $a['key'] ?? 'null', config('websockets.apps', []))));
                     $deferred->reject(new Exceptions\UnknownAppKey($appKey));
                 }
 
@@ -325,7 +328,7 @@ class WebSocketHandler implements MessageComponentInterface
     {
         try {
             $channel = config('logging.channels.websocket') ? 'websocket' : config('logging.default');
-            Log::channel($channel)->log($level, '[WebSocket] '.$message);
+            Log::channel($channel)->log($level, '[WebSocket] ' . $message);
         } catch (\Throwable) {
             // Logging must never break the server
         }

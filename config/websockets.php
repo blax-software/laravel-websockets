@@ -41,6 +41,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Auth Resolver
+    |--------------------------------------------------------------------------
+    |
+    | Callable that receives the `authtoken` string from an incoming message and
+    | returns either a user model (Authenticatable) or null. Used by Controller
+    | self-heal when `need_auth = true` and the connection has no user yet.
+    |
+    | Defaults to Laravel Sanctum lookup when Sanctum is installed. Applications
+    | can supply their own by binding `websockets.auth_resolver` in the container
+    | or by setting this to a `[Class::class, 'method']` / Closure reference.
+    |
+    */
+    'auth_resolver' => null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Max Concurrent Children (Fork Limit)
     |--------------------------------------------------------------------------
     |

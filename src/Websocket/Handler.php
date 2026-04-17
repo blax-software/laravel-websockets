@@ -686,9 +686,40 @@ class Handler implements MessageComponentInterface
         $startTime = microtime(true);
 
         $ipc->setupParent(
-            // onData callback - called INSTANTLY when child sends
+            // onData callback - called INSTANTLY when child sends.
+            // CRITICAL: this callback runs inside the React event loop. Any
+            // uncaught throwable here would propagate up through ExtEvLoop and
+            // crash the entire WebSocket server (supervisor would then restart
+            // it, dropping every connected client). We must catch and log.
             function ($data) use ($connection, $message, $startTime) {
-                $this->handleChildData($connection, $message, $data);
+                try {
+                    $this->handleChildData($connection, $message, $data);
+                } catch (\Throwable $e) {
+                    Log::channel('websocket')->error('handleChildData failed: ' . $e->getMessage(), [
+                        'event' => $message['event'] ?? 'unknown',
+                        'file' => $e->getFile() . ':' . $e->getLine(),
+                        'data_preview' => is_string($data) ? substr($data, 0, 200) : gettype($data),
+                    ]);
+
+                    if (app()->bound('sentry')) {
+                        try {
+                            app('sentry')->captureException($e);
+                        } catch (\Throwable $_) {
+                            // Sentry capture failed — never let logging crash the loop.
+                        }
+                    }
+
+                    // Best-effort: notify the client so it doesn't hang forever.
+                    try {
+                        $connection->send(json_encode([
+                            'event' => ($message['event'] ?? 'unknown') . ':error',
+                            'data' => ['message' => 'Internal server error'],
+                            'channel' => $message['channel'] ?? null,
+                        ]));
+                    } catch (\Throwable $_) {
+                        // Connection may already be gone — swallow.
+                    }
+                }
 
                 // Log latency for debugging
                 $elapsed = (microtime(true) - $startTime) * 1000;
@@ -696,14 +727,21 @@ class Handler implements MessageComponentInterface
                     Log::channel('websocket')->debug('IPC latency: ' . round($elapsed, 2) . 'ms');
                 }
             },
-            // onClose callback - child process ended
+            // onClose callback - child process ended.
+            // Same isolation rules apply: must not throw out of the loop.
             function () {
-                // Cleanup zombie process
-                pcntl_waitpid(-1, $status, WNOHANG);
+                try {
+                    // Cleanup zombie process
+                    pcntl_waitpid(-1, $status, WNOHANG);
 
-                // Free up a child slot and process any queued messages
-                $this->activeChildCount = max(0, $this->activeChildCount - 1);
-                $this->processDeferredMessages();
+                    // Free up a child slot and process any queued messages
+                    $this->activeChildCount = max(0, $this->activeChildCount - 1);
+                    $this->processDeferredMessages();
+                } catch (\Throwable $e) {
+                    Log::channel('websocket')->error('IPC onClose failed: ' . $e->getMessage(), [
+                        'file' => $e->getFile() . ':' . $e->getLine(),
+                    ]);
+                }
             }
         );
     }
@@ -841,8 +879,14 @@ class Handler implements MessageComponentInterface
                 unset($connection->authLoaded);
                 $connection->user = null;
 
-                // Clear any custom connection data that was stored via C:SET
-                foreach (($connection->_connectionDataKeys ?? []) as $key => $_) {
+                // Clear any custom connection data that was stored via C:SET.
+                // Read-modify-write the tracker via a local copy because the
+                // connection may be wrapped in a decorator (e.g. ConnectionLogger)
+                // whose __get returns by value — direct array mutation on the
+                // overloaded property would raise "Indirect modification has no
+                // effect" and Laravel's error handler turns that into a fatal.
+                $keys = $connection->_connectionDataKeys ?? [];
+                foreach ($keys as $key => $_) {
                     unset($connection->$key);
                 }
                 $connection->_connectionDataKeys = [];
@@ -854,15 +898,20 @@ class Handler implements MessageComponentInterface
                     $key = substr($rest, 0, $pos);
                     $value = json_decode(substr($rest, $pos + 1));
                     $connection->$key = $value;
-                    $connection->_connectionDataKeys ??= [];
-                    $connection->_connectionDataKeys[$key] = true;
+
+                    // Read-modify-write via local copy (see note above).
+                    $keys = $connection->_connectionDataKeys ?? [];
+                    $keys[$key] = true;
+                    $connection->_connectionDataKeys = $keys;
                 }
             } elseif (str_starts_with($op, 'DEL:')) {
                 // C:DEL:key
                 $key = substr($op, 4);
                 unset($connection->$key);
-                if (isset($connection->_connectionDataKeys[$key])) {
-                    unset($connection->_connectionDataKeys[$key]);
+                $keys = $connection->_connectionDataKeys ?? [];
+                if (isset($keys[$key])) {
+                    unset($keys[$key]);
+                    $connection->_connectionDataKeys = $keys;
                 }
             }
 

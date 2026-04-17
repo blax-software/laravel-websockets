@@ -146,7 +146,7 @@ class Logger
 
         try {
             $channel = config('logging.channels.websocket') ? 'websocket' : null;
-            Log::channel($channel)->log($logLevel, '[WebSocket] '.$message);
+            Log::channel($channel)->log($logLevel, '[WebSocket] ' . $message);
         } catch (\Throwable) {
             // Logging must never crash the WS server
         }

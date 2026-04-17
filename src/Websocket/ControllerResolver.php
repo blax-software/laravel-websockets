@@ -105,11 +105,11 @@ class ControllerResolver
     private static function resolveWithHotReload(string $eventPrefix): ?string
     {
         $directName = self::kebabToPascal($eventPrefix) . 'Controller';
-        
+
         // Try app namespace first
         $appClass = self::APP_NAMESPACE . $directName;
         $appFile = self::getControllerFilePath($appClass);
-        
+
         if ($appFile && file_exists($appFile)) {
             self::invalidateAndReload($appFile);
             if (class_exists($appClass, true)) {
@@ -120,7 +120,7 @@ class ControllerResolver
         // Try vendor namespace
         $vendorClass = self::VENDOR_NAMESPACE . $directName;
         $vendorFile = self::getControllerFilePath($vendorClass);
-        
+
         if ($vendorFile && file_exists($vendorFile)) {
             self::invalidateAndReload($vendorFile);
             if (class_exists($vendorClass, true)) {
@@ -141,7 +141,7 @@ class ControllerResolver
                 // Try app namespace with folder
                 $appClass = self::APP_NAMESPACE . str_replace('/', '\\', $folder) . '\\' . $name;
                 $appFile = self::getControllerFilePath($appClass);
-                
+
                 if ($appFile && file_exists($appFile)) {
                     self::invalidateAndReload($appFile);
                     if (class_exists($appClass, true)) {
@@ -178,7 +178,7 @@ class ControllerResolver
                 return $appPath . '/' . $relativePath . '.php';
             }
         }
-        
+
         // For vendor namespace
         if (str_starts_with($className, self::VENDOR_NAMESPACE)) {
             $relativePath = str_replace(self::VENDOR_NAMESPACE, '', $className);
@@ -199,7 +199,7 @@ class ControllerResolver
         // e.g., 'app' → '\App\Websocket\Controllers\AppController'
         $directName = self::kebabToPascal($eventPrefix) . 'Controller';
         $appClass = self::APP_NAMESPACE . $directName;
-        
+
         // class_exists with autoload=true is fast for already-loaded classes
         if (class_exists($appClass, true)) {
             return $appClass;

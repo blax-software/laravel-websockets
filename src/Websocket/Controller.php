@@ -10,7 +10,6 @@ use BlaxSoftware\LaravelWebSockets\Channels\PresenceChannel;
 use BlaxSoftware\LaravelWebSockets\Channels\PrivateChannel;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Laravel\Sanctum\PersonalAccessToken;
 use Ratchet\ConnectionInterface;
 
 class Controller
@@ -98,9 +97,9 @@ class Controller
                 $authtoken = @$message['data']['authtoken'] ?? null;
                 if ($authtoken) {
                     try {
-                        $tokenRecord = PersonalAccessToken::findToken($authtoken);
-                        if ($tokenRecord?->tokenable) {
-                            $connection->user = $tokenRecord->tokenable;
+                        $resolved = self::resolveUserFromToken($authtoken);
+                        if ($resolved) {
+                            $connection->user = $resolved;
                             Auth::login($connection->user);
                             // Clear parent's stale auth cache so it re-authenticates
                             if ($connection instanceof MockConnectionSocketPair) {
@@ -164,6 +163,48 @@ class Controller
 
             return self::send_error($connection, $message, $e->getMessage(), true);
         }
+    }
+
+    /**
+     * Resolve a user from an authtoken string. First tries the configured
+     * `websockets.auth_resolver` callable; falls back to Laravel Sanctum's
+     * `PersonalAccessToken::findToken()` if the class exists.
+     *
+     * Returns an Authenticatable user or null.
+     */
+    protected static function resolveUserFromToken(string $authtoken)
+    {
+        // 1. Configured resolver (closure or [Class, method])
+        $resolver = config('websockets.auth_resolver');
+        if ($resolver && is_callable($resolver)) {
+            $user = $resolver($authtoken);
+            if ($user) {
+                return $user;
+            }
+        }
+
+        // 2. Container binding (useful for class-based resolvers)
+        if (app()->bound('websockets.auth_resolver')) {
+            $bound = app('websockets.auth_resolver');
+            if (is_callable($bound)) {
+                $user = $bound($authtoken);
+                if ($user) {
+                    return $user;
+                }
+            }
+        }
+
+        // 3. Fallback to Sanctum if available (string class name to avoid
+        // autoload errors when the package isn't installed)
+        $sanctumClass = 'Laravel\\Sanctum\\PersonalAccessToken';
+        if (class_exists($sanctumClass)) {
+            $tokenRecord = $sanctumClass::findToken($authtoken);
+            if ($tokenRecord?->tokenable) {
+                return $tokenRecord->tokenable;
+            }
+        }
+
+        return null;
     }
 
     final public function progress(
