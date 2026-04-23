@@ -60,9 +60,7 @@ class ChannelManager extends LocalChannelManager
 
         $this->loop = $loop;
 
-        $this->redis = Redis::connection(
-            config('websockets.replication.modes.redis.connection', 'default')
-        );
+        $this->redis = Redis::connection($this->getReplicationConnectionName());
 
         $connectionUri = $this->getConnectionUri();
 
@@ -727,7 +725,7 @@ class ChannelManager extends LocalChannelManager
      */
     protected function getConnectionUri()
     {
-        $name = config('websockets.replication.modes.redis.connection', 'default');
+        $name = $this->getReplicationConnectionName();
         $config = config("database.redis.{$name}");
 
         $host = $config['host'];
@@ -746,6 +744,17 @@ class ChannelManager extends LocalChannelManager
         $query = http_build_query($query);
 
         return "redis://{$host}:{$port}" . ($query ? "?{$query}" : '');
+    }
+
+    /**
+     * Resolve the Redis connection name used by the active replication mode.
+     */
+    protected function getReplicationConnectionName(): string
+    {
+        $mode = config('websockets.replication.mode', 'redis');
+
+        return config("websockets.replication.modes.{$mode}.connection")
+            ?? config('websockets.replication.modes.redis.connection', 'default');
     }
 
     /**

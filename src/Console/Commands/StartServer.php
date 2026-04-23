@@ -4,6 +4,7 @@ namespace BlaxSoftware\LaravelWebSockets\Console\Commands;
 
 use BlaxSoftware\LaravelWebSockets\Broadcast\BroadcastSocketServer;
 use BlaxSoftware\LaravelWebSockets\Cache\IpcCache;
+use BlaxSoftware\LaravelWebSockets\ChannelManagers\LocalChannelManager;
 use BlaxSoftware\LaravelWebSockets\Contracts\ChannelManager;
 use BlaxSoftware\LaravelWebSockets\Facades\WebSocketRouter;
 use BlaxSoftware\LaravelWebSockets\Ipc\SocketPairIpc;
@@ -101,10 +102,8 @@ class StartServer extends Command
 
     /**
      * Run the command.
-     *
-     * @return void
      */
-    public function handle()
+    public function handle(): int
     {
         try {
             \Log::channel('websocket')->debug('websockets:serve command started', [
@@ -134,9 +133,13 @@ class StartServer extends Command
             // but now safe because: (1) cache() is only called in parent process,
             // (2) child processes purge inherited Redis connections and get fresh ones
             $cacheDriver = $this->option('cache-driver') ?: config('cache.default');
-            config(['cache.default' => $cacheDriver]);
-            $this->cacheStore = $cacheDriver;
-            \Log::channel('websocket')->debug('Cache driver configured', ['driver' => $cacheDriver]);
+            $resolvedCacheDriver = $this->resolveCacheStore($cacheDriver);
+            config(['cache.default' => $resolvedCacheDriver]);
+            $this->cacheStore = $resolvedCacheDriver;
+            \Log::channel('websocket')->debug('Cache driver configured', [
+                'driver' => $cacheDriver,
+                'resolved_driver' => $resolvedCacheDriver,
+            ]);
 
             WebsocketService::resetAllTracking();
             \Log::channel('websocket')->debug('WebsocketService tracking reset');
@@ -182,6 +185,8 @@ class StartServer extends Command
 
             \Log::channel('websocket')->debug('Starting server...');
             $this->startServer();
+
+            return self::SUCCESS;
         } catch (\Throwable $e) {
             $this->error('Error starting the WebSocket server: ' . $e->getMessage());
 
@@ -193,6 +198,8 @@ class StartServer extends Command
             if (app()->bound('sentry')) {
                 app('sentry')->captureException($e);
             }
+
+            return self::FAILURE;
         }
     }
 
@@ -223,15 +230,58 @@ class StartServer extends Command
             $config = $app['config']['websockets'];
             $mode = $config['replication']['mode'] ?? 'local';
 
-            $class = $config['replication']['modes'][$mode]['channel_manager'];
+            $class = $config['replication']['modes'][$mode]['channel_manager'] ?? LocalChannelManager::class;
 
             \Log::channel('websocket')->debug('Creating ChannelManager', [
                 'mode' => $mode,
                 'class' => $class,
             ]);
 
-            return new $class($this->loop);
+            try {
+                return new $class($this->loop);
+            } catch (\Throwable $e) {
+                if ($class === LocalChannelManager::class) {
+                    throw $e;
+                }
+
+                $connectionName = $config['replication']['modes'][$mode]['connection'] ?? 'default';
+                $redisHost = config("database.redis.{$connectionName}.host", 'unknown');
+                $redisPort = config("database.redis.{$connectionName}.port", 6379);
+
+                \Log::channel('websocket')->error('Failed to initialize replication channel manager; falling back to local mode.', [
+                    'mode' => $mode,
+                    'class' => $class,
+                    'connection' => $connectionName,
+                    'redis_host' => $redisHost,
+                    'redis_port' => $redisPort,
+                    'error' => $e->getMessage(),
+                ]);
+
+                $this->components->warn('Replication manager unavailable; using local channel manager fallback.');
+
+                return new LocalChannelManager($this->loop);
+            }
         });
+    }
+
+    /**
+     * Resolve cache store and gracefully fallback to file if unavailable.
+     */
+    protected function resolveCacheStore(string $driver): string
+    {
+        try {
+            Cache::store($driver)->get('blax:websockets:cache-probe');
+
+            return $driver;
+        } catch (\Throwable $e) {
+            \Log::channel('websocket')->warning('Configured cache store unavailable, falling back to file.', [
+                'configured_store' => $driver,
+                'fallback_store' => 'file',
+                'error' => $e->getMessage(),
+            ]);
+
+            return 'file';
+        }
     }
 
     /**
@@ -302,7 +352,7 @@ class StartServer extends Command
      */
     public function configureSteerTimer(): void
     {
-        $steerData = Cache::store($this->cacheStore)->get('blax:websockets:steer');
+        $steerData = $this->getSteerData();
         $this->lastSteer = $steerData['time'] ?? null;
 
         \Log::channel('websocket')->debug('Steer timer configured', [
@@ -310,7 +360,7 @@ class StartServer extends Command
         ]);
 
         $this->loop->addPeriodicTimer(5, function () {
-            $steerData = Cache::store($this->cacheStore)->get('blax:websockets:steer');
+            $steerData = $this->getSteerData();
             $currentSteer = $steerData['time'] ?? null;
 
             if ($currentSteer !== null && $currentSteer !== $this->lastSteer) {
@@ -321,6 +371,25 @@ class StartServer extends Command
                 $this->handleSteerAction($action);
             }
         });
+    }
+
+    /**
+     * Read steer signal from cache without crashing the loop on transient outages.
+     */
+    protected function getSteerData(): array
+    {
+        try {
+            $data = Cache::store($this->cacheStore)->get('blax:websockets:steer');
+
+            return is_array($data) ? $data : [];
+        } catch (\Throwable $e) {
+            \Log::channel('websocket')->warning('Unable to read websocket steer signal from cache store.', [
+                'store' => $this->cacheStore,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**
@@ -745,7 +814,16 @@ class StartServer extends Command
      */
     protected function getLastRestartData()
     {
-        $data = Cache::store($this->cacheStore)->get('blax:websockets:restart');
+        try {
+            $data = Cache::store($this->cacheStore)->get('blax:websockets:restart');
+        } catch (\Throwable $e) {
+            \Log::channel('websocket')->warning('Unable to read websocket restart signal from cache store.', [
+                'store' => $this->cacheStore,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['time' => null, 'soft' => false];
+        }
 
         // Handle legacy format (just timestamp) for backwards compatibility
         if (is_numeric($data)) {

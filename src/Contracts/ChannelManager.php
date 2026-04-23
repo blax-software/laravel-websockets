@@ -116,7 +116,7 @@ interface ChannelManager
      * @param  string|null  $channelName
      * @return PromiseInterface[int]
      */
-    public function getLocalConnectionsCount($appId, string $channelName = null): PromiseInterface;
+    public function getLocalConnectionsCount($appId, ?string $channelName = null): PromiseInterface;
 
     /**
      * Get the connections count
@@ -126,7 +126,7 @@ interface ChannelManager
      * @param  string|null  $channelName
      * @return PromiseInterface[int]
      */
-    public function getGlobalConnectionsCount($appId, string $channelName = null): PromiseInterface;
+    public function getGlobalConnectionsCount($appId, ?string $channelName = null): PromiseInterface;
 
     /**
      * Broadcast the message across multiple servers.
@@ -138,7 +138,7 @@ interface ChannelManager
      * @param  string|null  $serverId
      * @return PromiseInterface[bool]
      */
-    public function broadcastAcrossServers($appId, ?string $socketId, string $channel, stdClass $payload, string $serverId = null): PromiseInterface;
+    public function broadcastAcrossServers($appId, ?string $socketId, string $channel, stdClass $payload, ?string $serverId = null): PromiseInterface;
 
     /**
      * Handle the user when it joined a presence channel.

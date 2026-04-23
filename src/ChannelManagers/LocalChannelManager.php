@@ -272,7 +272,7 @@ class LocalChannelManager implements ChannelManager
      * @param  string|null  $channelName
      * @return PromiseInterface[int]
      */
-    public function getLocalConnectionsCount($appId, string $channelName = null): PromiseInterface
+    public function getLocalConnectionsCount($appId, ?string $channelName = null): PromiseInterface
     {
         return $this->getLocalChannels($appId)
             ->then(function ($channels) use ($channelName) {
@@ -296,7 +296,7 @@ class LocalChannelManager implements ChannelManager
      * @param  string|null  $channelName
      * @return PromiseInterface[int]
      */
-    public function getGlobalConnectionsCount($appId, string $channelName = null): PromiseInterface
+    public function getGlobalConnectionsCount($appId, ?string $channelName = null): PromiseInterface
     {
         return $this->getLocalConnectionsCount($appId, $channelName);
     }
@@ -311,7 +311,7 @@ class LocalChannelManager implements ChannelManager
      * @param  string|null  $serverId
      * @return PromiseInterface[bool]
      */
-    public function broadcastAcrossServers($appId, ?string $socketId, string $channel, stdClass $payload, string $serverId = null): PromiseInterface
+    public function broadcastAcrossServers($appId, ?string $socketId, string $channel, stdClass $payload, ?string $serverId = null): PromiseInterface
     {
         return Helpers::createFulfilledPromise(true);
     }
