@@ -31,6 +31,7 @@ class WebSocketsServiceProvider extends ServiceProvider
         $this->registerWebSocketHandler();
         $this->registerRouter();
         $this->registerManagers();
+        $this->registerIdentityFormatter();
         $this->registerBroadcastAuthRoute();
         $this->registerCommands();
     }
@@ -79,6 +80,30 @@ class WebSocketsServiceProvider extends ServiceProvider
 
             return $this->app->make($config['managers']['app']);
         });
+    }
+
+    /**
+     * Bind the identity formatter used by admin tooling (`websockets:watch -v`).
+     *
+     * Resolution order:
+     *   1. Whatever is already bound to `Contracts\IdentityFormatter` — apps
+     *      that called `$this->app->bind()` in their own provider win, because
+     *      this register runs in `boot()` after their `register()`.
+     *   2. The class named in `config('websockets.identity_formatter')`.
+     *   3. The package default (`DefaultIdentityFormatter`).
+     */
+    protected function registerIdentityFormatter()
+    {
+        if ($this->app->bound(Contracts\IdentityFormatter::class)) {
+            return;
+        }
+
+        $configured = config('websockets.identity_formatter');
+        $class = is_string($configured) && $configured !== ''
+            ? $configured
+            : Identity\DefaultIdentityFormatter::class;
+
+        $this->app->singleton(Contracts\IdentityFormatter::class, $class);
     }
 
     protected function registerBroadcastAuthRoute()

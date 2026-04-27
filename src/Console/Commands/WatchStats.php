@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace BlaxSoftware\LaravelWebSockets\Console\Commands;
 
+use BlaxSoftware\LaravelWebSockets\Contracts\IdentityFormatter;
 use BlaxSoftware\LaravelWebSockets\Services\WebsocketService;
 use Illuminate\Console\Command;
 
@@ -145,21 +146,20 @@ class WatchStats extends Command
             return '<fg=gray>Guest</>';
         }
 
-        $user = WebsocketService::getAuth($socketId);
-        if (! $user) {
-            // Authed but the per-socket user blob expired / was evicted.
+        $subject = WebsocketService::getAuth($socketId);
+        if (! $subject) {
+            // Authed-but-expired: the socket is in ws_socket_authed_users
+            // but the per-socket user blob has fallen out of cache. Show the
+            // bare id from authedUsers so the connection isn't mislabeled
+            // as a Guest.
             return '<fg=yellow>#' . $authedUsers[$socketId] . '</>';
         }
 
-        // Try common identity fields in order of usefulness. Fall back to the
-        // user id so we always have something to display.
-        $label = $user->name
-            ?? $user->display_name
-            ?? $user->username
-            ?? $user->email
-            ?? ('#' . ($user->id ?? '?'));
-
-        return (string) $label;
+        // Delegate formatting to the bound IdentityFormatter so apps with
+        // non-User subjects (Company, ApiClient, etc.) can render their own
+        // shape without forking the package.
+        $formatter = app(IdentityFormatter::class);
+        return $formatter->format($subject, $socketId);
     }
 
     private function formatDuration(string $socketId, int $now): string

@@ -57,6 +57,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Identity Formatter
+    |--------------------------------------------------------------------------
+    |
+    | Class used by admin tooling (`php artisan websockets:watch -v`) to render
+    | the "User" column for each connection. The default formatter handles the
+    | typical Eloquent User shape (id / name / username / email) and produces
+    | strings like `#42 - Alice | alice42 - alice@example.com`, dropping any
+    | suffix whose source field is missing.
+    |
+    | Apps with non-User auth subjects (multi-tenant company accounts, api
+    | clients, etc.) can implement
+    | `BlaxSoftware\LaravelWebSockets\Contracts\IdentityFormatter` and either
+    | name the class here, or bind it directly:
+    |
+    |     $this->app->bind(IdentityFormatter::class, MyFormatter::class);
+    |
+    | Leave null to use the package default.
+    |
+    */
+    'identity_formatter' => null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Max Concurrent Children (Fork Limit)
     |--------------------------------------------------------------------------
     |
