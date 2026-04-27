@@ -1015,7 +1015,7 @@ class Handler implements MessageComponentInterface
 
                 $this->channelManager->unsubscribeFromApp($connection->app->id);
                 ConnectionClosed::dispatch($connection->app->id, $connection->socketId);
-                cache()->forget('ws_connection_' . $connection->socketId);
+                cache()->forget('ws_connection_' . str()->slug($connection->socketId));
             });
     }
 
@@ -1138,6 +1138,17 @@ class Handler implements MessageComponentInterface
                 'activity_timeout' => 30,
             ]),
         ]));
+
+        // Track connection start time so admin tooling (e.g.
+        // `php artisan websockets:watch -v`) can report how long a socket
+        // has been open. Slug the socketId to match WebsocketService::getConnection()
+        // (which has always slugged its reads). Cleaned up by
+        // finalizeConnectionClose().
+        cache()->forever('ws_connection_' . str()->slug($connection->socketId), [
+            'socket_id'    => $connection->socketId,
+            'connected_at' => time(),
+            'remote_addr'  => $connection->remoteAddress ?? null,
+        ]);
 
         return $this;
     }
