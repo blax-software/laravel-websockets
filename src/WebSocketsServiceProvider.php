@@ -61,6 +61,7 @@ class WebSocketsServiceProvider extends ServiceProvider
             Console\Commands\RestartHard::class,
             Console\Commands\SteerServer::class,
             Console\Commands\ServerInfo::class,
+            Console\Commands\WatchStats::class,
         ]);
     }
 
