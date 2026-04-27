@@ -963,7 +963,11 @@ class Handler implements MessageComponentInterface
     protected function cleanupChannelConnections(ConnectionInterface $connection): void
     {
         $cacheUpdates = [];
-        $cacheDeletes = ['ws_socket_auth_' . $connection->socketId];
+        // Slug socketId so this key matches what WebsocketService::getAuth()
+        // reads and what setUserAuthed() writes; raw socketIds contain dots
+        // ("123.456") that the slug() call strips ("123-456") and previously
+        // produced read/write key drift that masked auth state on disconnect.
+        $cacheDeletes = ['ws_socket_auth_' . str()->slug($connection->socketId)];
         $socketId = $connection->socketId;
 
         foreach ($this->channel_connections as $channel => $connections) {
@@ -1350,9 +1354,13 @@ class Handler implements MessageComponentInterface
         $authed_users = cache()->get('ws_socket_authed_users') ?? [];
         $authed_users[$socketId] = $user->id;
 
-        // Single batched cache write - reduces 3 operations to 1
+        // Single batched cache write - reduces 3 operations to 1.
+        // Slug the socketId so this key matches WebsocketService::getAuth()
+        // and setUserAuthed() — raw socketIds like "123.456" don't survive
+        // a round-trip with slugged ("123-456") readers, and previously this
+        // write was effectively unreachable from the rest of the codebase.
         cache()->setMultiple([
-            'ws_socket_auth_' . $socketId => $user,
+            'ws_socket_auth_' . str()->slug($socketId) => $user,
             'ws_socket_authed_users' => $authed_users
         ]);
 

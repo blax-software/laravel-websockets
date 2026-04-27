@@ -114,9 +114,24 @@ class WatchStats extends Command
             return;
         }
 
-        // Verbose: one summary row per channel, then one sub-row per connection.
-        // The sub-rows fill the User and Duration columns; the summary fills
-        // Channel and Connections. Dashes mark "not applicable on this row".
+        // Verbose: collect every authed userId whose per-socket cache blob is
+        // missing, batch-load them from the auth provider's user model in one
+        // query, and reuse the resolved subject when formatting each row. This
+        // covers two real cases: connections that predate the cache writer
+        // being added, and Redis evictions under memory pressure.
+        $missingByUserId = [];
+        foreach ($perChannel as $sockets) {
+            foreach ($sockets as $socketId) {
+                if (! isset($authedUsers[$socketId])) {
+                    continue;
+                }
+                if (! WebsocketService::getAuth($socketId)) {
+                    $missingByUserId[$authedUsers[$socketId]] = true;
+                }
+            }
+        }
+        $usersById = $this->loadAuthUsers(array_keys($missingByUserId));
+
         $now  = time();
         $rows = [];
         foreach ($perChannel as $channel => $sockets) {
@@ -131,7 +146,7 @@ class WatchStats extends Command
                 $rows[] = [
                     '  <fg=gray>↳</>',
                     "<fg=gray>{$socketId}</>",
-                    $this->formatUser($socketId, $authedUsers),
+                    $this->formatUser($socketId, $authedUsers, $usersById),
                     $this->formatDuration($socketId, $now),
                 ];
             }
@@ -140,26 +155,55 @@ class WatchStats extends Command
         $this->table(['Channel', 'Connections', 'User', 'Duration'], $rows);
     }
 
-    private function formatUser(string $socketId, array $authedUsers): string
+    /**
+     * Load users by id from the configured auth provider's model.
+     *
+     * Returns [id => model] for found ids; absent ids simply don't appear.
+     * Returns [] silently on any failure (no auth provider, model missing,
+     * DB unreachable) — this is admin tooling, not a critical path.
+     */
+    private function loadAuthUsers(array $ids): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        $model = config('auth.providers.users.model');
+        if (! is_string($model) || ! class_exists($model)) {
+            return [];
+        }
+
+        try {
+            return $model::query()
+                ->whereIn('id', $ids)
+                ->get()
+                ->keyBy('id')
+                ->all();
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    private function formatUser(string $socketId, array $authedUsers, array $usersById): string
     {
         if (! isset($authedUsers[$socketId])) {
             return '<fg=gray>Guest</>';
         }
 
-        $subject = WebsocketService::getAuth($socketId);
+        $userId  = $authedUsers[$socketId];
+        $subject = WebsocketService::getAuth($socketId) ?: ($usersById[$userId] ?? null);
+
         if (! $subject) {
-            // Authed-but-expired: the socket is in ws_socket_authed_users
-            // but the per-socket user blob has fallen out of cache. Show the
-            // bare id from authedUsers so the connection isn't mislabeled
-            // as a Guest.
-            return '<fg=yellow>#' . $authedUsers[$socketId] . '</>';
+            // Auth provider couldn't resolve the user either (deleted? auth
+            // model not Eloquent?). Fall back to the bare id rather than
+            // mislabeling as Guest, so debugging stays accurate.
+            return '<fg=yellow>#' . $userId . '</>';
         }
 
-        // Delegate formatting to the bound IdentityFormatter so apps with
-        // non-User subjects (Company, ApiClient, etc.) can render their own
-        // shape without forking the package.
-        $formatter = app(IdentityFormatter::class);
-        return $formatter->format($subject, $socketId);
+        // Delegate to the bound IdentityFormatter so apps with non-User
+        // subjects (Company, ApiClient, etc.) can render their own shape
+        // without forking the package.
+        return app(IdentityFormatter::class)->format($subject, $socketId);
     }
 
     private function formatDuration(string $socketId, int $now): string
