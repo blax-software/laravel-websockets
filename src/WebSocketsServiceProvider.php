@@ -58,6 +58,7 @@ class WebSocketsServiceProvider extends ServiceProvider
         $this->commands([
             Console\Commands\StartServer::class,
             Console\Commands\RestartServer::class,
+            Console\Commands\RestartHard::class,
             Console\Commands\SteerServer::class,
             Console\Commands\ServerInfo::class,
         ]);
