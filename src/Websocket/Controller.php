@@ -80,7 +80,13 @@ class Controller
                 // #[Websocket] attribute may handle this event. The registry
                 // exposes a flat event-name → callable map built by
                 // reflecting attribute-tagged methods at scan time.
-                $target = EventRegistry::resolve($message['event']);
+                //
+                // IMPORTANT: registry keys are stored without the client-side
+                // `[uniquifier]` segment (e.g. `flightschool.index[abc123]`),
+                // so we rebuild the lookup name from the cleaned prefix +
+                // cleaned method instead of using `$message['event']` raw.
+                $cleanEvent = $eventPrefix . '.' . $method;
+                $target = EventRegistry::resolve($cleanEvent);
                 if ($target) {
                     return self::dispatchHttpAttributeTarget($connection, $message, $target);
                 }

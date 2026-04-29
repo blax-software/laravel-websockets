@@ -105,6 +105,23 @@ class DispatcherFallbackTest extends TestCase
     }
 
     /** @test */
+    public function it_strips_the_client_side_uniquifier_before_registry_lookup()
+    {
+        // Real-world client-side wrappers append a per-request uniquifier in
+        // square brackets (e.g. `dispatchable.array[abc123]`) so the response
+        // can be correlated. The dispatcher must strip that before looking
+        // up the registry — otherwise every WS client request would 404 the
+        // registry path even though the underlying event is well-formed.
+        $result = $this->dispatch($this->message('dispatchable.array[abc123]'));
+
+        $this->assertSame(['kind' => 'array', 'ok' => true], $result['return']);
+        // The :response envelope echoes back the ORIGINAL event name (with
+        // uniquifier) so clients can match the response to the request.
+        $this->assertSame('dispatchable.array[abc123]:response', $result['sent']['event']);
+        $this->assertSame(['kind' => 'array', 'ok' => true], $result['sent']['data']);
+    }
+
+    /** @test */
     public function it_falls_through_to_the_send_error_when_neither_resolver_nor_registry_matches()
     {
         $result = $this->dispatch($this->message('not-a-real-thing.show'));

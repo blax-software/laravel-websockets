@@ -34,6 +34,25 @@ class WebSocketsServiceProvider extends ServiceProvider
         $this->registerIdentityFormatter();
         $this->registerBroadcastAuthRoute();
         $this->registerCommands();
+        $this->registerRouteListIntegration();
+    }
+
+    /**
+     * Inject every WS event as a `WS|WSS` route in the Laravel router so
+     * `php artisan route:list` shows the realtime surface alongside HTTP.
+     *
+     * Only runs in the console: HTTP requests can never carry a `WS` or
+     * `WSS` method, so the routes are inert for production dispatch, but
+     * registering them per-request would still cost a directory scan we
+     * don't need to pay there.
+     */
+    protected function registerRouteListIntegration()
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        Routing\RouteListInjector::inject($this->app['router']);
     }
 
     public function register()
