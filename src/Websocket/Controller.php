@@ -473,9 +473,14 @@ class Controller
     final public function whisper(
         array|string|null $payload = null,
         ?string $event = null,
-        array $socketIds,
+        array $socketIds = [],
         ?string $channel = null
     ) {
+        // PHP 8.x deprecates "optional before required" in parameter
+        // lists, so $socketIds is now defaulted. Empty $socketIds is a
+        // no-op (the array_flip-based lookup below matches no
+        // connections), preserving the existing behavior for callers
+        // that intentionally omit it.
         if (is_string($payload)) {
             $payload = [
                 'message' => $payload,
