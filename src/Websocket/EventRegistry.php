@@ -105,9 +105,12 @@ class EventRegistry
      *   Api\V1FlightschoolController, then
      *   Api\V1\FlightschoolController.
      *
-     * That last form matches our v1 layout exactly — so an event sent to
-     * `api-v1-flightschool.index` ends up at the same controller
-     * regardless of which side (registry or resolver) finds it first.
+     * That last form matches the v1 layout exactly — so an event sent to
+     * `api-v1-flightschool.index` ends up at the same controller regardless
+     * of which side (registry or resolver) finds it first.
+     *
+     * Override per controller via `#[Websocket(prefix: '…')]`, or per method
+     * via `#[Websocket(suffix: '…')]` for the after-dot part.
      */
     public static function eventPrefixFor(string $fqcn, string $baseNamespace = 'App\\Http\\Controllers\\'): string
     {
@@ -116,7 +119,6 @@ class EventRegistry
         if (str_starts_with($fqcn, $baseNamespace)) {
             $relative = substr($fqcn, strlen($baseNamespace));
         } else {
-            // Fallback: just the short class name
             $relative = ltrim(strrchr($fqcn, '\\') ?: $fqcn, '\\');
         }
 
@@ -127,8 +129,7 @@ class EventRegistry
         $last = preg_replace('/Controller$/', '', $last) ?? $last;
 
         if ($last === '') {
-            // Defensive: class literally named "Controller" — fall back to
-            // parent folder if any.
+            // Defensive: class literally named "Controller"
             $last = array_pop($segments) ?? 'controller';
         }
 
@@ -145,9 +146,7 @@ class EventRegistry
     }
 
     /**
-     * Backwards-compatible alias for {@see eventPrefixFor()}.
-     *
-     * @deprecated Use {@see eventPrefixFor()} which understands folder structure.
+     * @deprecated Use {@see eventPrefixFor()}.
      */
     public static function defaultPrefixFor(string $shortClassName): string
     {
@@ -168,18 +167,29 @@ class EventRegistry
 
         $autoPrefix = self::eventPrefixFor($class, $baseNamespace);
         $classPrefix = null;
+        $classNeedAuth = false;
 
-        // Class-level attribute: applies prefix to every public method
+        // Class-level attribute: applies prefix (and default needAuth) to every
+        // public method. The class-level `suffix` is intentionally ignored —
+        // suffix is a per-method concept by definition.
         $classAttr = $reflection->getAttributes(Websocket::class)[0] ?? null;
         if ($classAttr) {
             /** @var Websocket $instance */
             $instance = $classAttr->newInstance();
             $classPrefix = $instance->prefix ?? $autoPrefix;
+            $classNeedAuth = $instance->needAuth;
 
             foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
                 if ($method->isStatic() || $method->isAbstract() || $method->getDeclaringClass()->getName() !== $class) {
                     continue;
                 }
+
+                // Skip methods that carry their own attribute — they're handled
+                // (and override the class-level entry) in the per-method pass below.
+                if (count($method->getAttributes(Websocket::class)) > 0) {
+                    continue;
+                }
+
                 $event = $instance->event ?? ($classPrefix . '.' . $method->getName());
                 self::$map[$event] = [
                     'class' => $class,
@@ -189,7 +199,7 @@ class EventRegistry
             }
         }
 
-        // Method-level attributes override or supplement the class-level map
+        // Method-level attributes — override or supplement the class-level map
         foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
             if ($method->getDeclaringClass()->getName() !== $class) {
                 continue;
@@ -199,16 +209,26 @@ class EventRegistry
                 /** @var Websocket $instance */
                 $instance = $attr->newInstance();
 
+                // Resolution order for the before-dot part:
+                //   1. explicit `event:` (full string wins, see below)
+                //   2. method-level `prefix:`
+                //   3. class-level `prefix:` (already merged into $classPrefix)
+                //   4. derived `eventPrefixFor($class, $baseNamespace)`
                 $prefix = $instance->prefix
                     ?? $classPrefix
                     ?? $autoPrefix;
 
-                $event = $instance->event ?? ($prefix . '.' . $method->getName());
+                // After-dot part — defaults to the actual PHP method name
+                // (matches how Controller::handle() uses event[1] verbatim
+                // as the method name on the resolved controller).
+                $suffix = $instance->suffix ?? $method->getName();
+
+                $event = $instance->event ?? ($prefix . '.' . $suffix);
 
                 self::$map[$event] = [
                     'class' => $class,
                     'method' => $method->getName(),
-                    'needAuth' => $instance->needAuth,
+                    'needAuth' => $instance->needAuth || $classNeedAuth,
                 ];
             }
         }

@@ -76,6 +76,15 @@ class Controller
             $controllerClass = ControllerResolver::resolve($eventPrefix);
 
             if (! $controllerClass) {
+                // Fallback: an HTTP controller method tagged with the
+                // #[Websocket] attribute may handle this event. The registry
+                // exposes a flat event-name → callable map built by
+                // reflecting attribute-tagged methods at scan time.
+                $target = EventRegistry::resolve($message['event']);
+                if ($target) {
+                    return self::dispatchHttpAttributeTarget($connection, $message, $target);
+                }
+
                 return self::send_error($connection, $message, 'Event could not be associated');
             }
 
@@ -163,6 +172,118 @@ class Controller
 
             return self::send_error($connection, $message, $e->getMessage(), true);
         }
+    }
+
+    /**
+     * Dispatch an event whose target is an HTTP controller method tagged
+     * with the {@see \BlaxSoftware\LaravelWebSockets\Attributes\Websocket}
+     * attribute (resolved via {@see EventRegistry}).
+     *
+     * HTTP controllers don't accept the WS-specific constructor args
+     * ($connection, $channel, $event, $channelManager), so we resolve them
+     * through the Laravel container and shape the call to look like a
+     * normal HTTP invocation:
+     *
+     *  - request()->merge($data) so `request('foo')` works
+     *  - method positional args resolved by name from $data
+     *  - JsonResponse/Response payloads unwrapped to plain data
+     *
+     * Auth gating mirrors the standard flow: `needAuth` enforces an
+     * authenticated $connection->user, with the same self-heal hop via
+     * the auth token if the parent process didn't see it.
+     *
+     * @param array{class: class-string, method: string, needAuth: bool} $target
+     */
+    protected static function dispatchHttpAttributeTarget(
+        ConnectionInterface $connection,
+        array $message,
+        array $target
+    ) {
+        if ($target['needAuth'] && ! ($connection->user ?? null)) {
+            $authtoken = @$message['data']['authtoken'] ?? null;
+            if ($authtoken) {
+                try {
+                    $resolved = self::resolveUserFromToken($authtoken);
+                    if ($resolved) {
+                        $connection->user = $resolved;
+                        Auth::login($connection->user);
+                    }
+                } catch (\Throwable $e) {
+                    // self-heal failed; fall through to the unauthorized branch
+                }
+            }
+
+            if (! ($connection->user ?? null)) {
+                return self::send_error($connection, $message, 'Unauthorized');
+            }
+        }
+
+        $data = is_array($message['data'] ?? null) ? $message['data'] : [];
+
+        // Make WS data visible to anything that calls `request()`.
+        try {
+            request()->merge($data);
+        } catch (\Throwable $e) {
+            // request() not bound — shouldn't happen in a Laravel app, ignore.
+        }
+
+        $instance = app($target['class']);
+        $args = self::resolveAttributeMethodArgs($target['class'], $target['method'], $data);
+
+        $payload = $instance->{$target['method']}(...$args);
+
+        // Normalize Response/JsonResponse → plain data
+        if ($payload instanceof \Illuminate\Http\JsonResponse) {
+            $payload = $payload->getData(true);
+        } elseif ($payload instanceof \Symfony\Component\HttpFoundation\Response) {
+            $decoded = json_decode($payload->getContent() ?: 'null', true);
+            $payload = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $payload->getContent();
+        }
+
+        $connection->send(json_encode([
+            'event' => $message['event'] . ':response',
+            'data' => $payload,
+            'channel' => $message['channel'] ?? null,
+        ]));
+
+        return $payload;
+    }
+
+    /**
+     * Reflect the target method and pull positional args by parameter name
+     * from the WS payload. This mirrors how Laravel's HTTP route bindings
+     * pass URL segments to controller methods (e.g. `show(string $slug)`
+     * gets the `slug` value from $data['slug']).
+     *
+     * Falls through to default values, then null for nullable params.
+     *
+     * @return array<int, mixed>
+     */
+    protected static function resolveAttributeMethodArgs(string $class, string $method, array $data): array
+    {
+        try {
+            $reflection = new \ReflectionMethod($class, $method);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        $args = [];
+        foreach ($reflection->getParameters() as $param) {
+            $name = $param->getName();
+            if (array_key_exists($name, $data)) {
+                $args[] = $data[$name];
+            } elseif ($param->isDefaultValueAvailable()) {
+                $args[] = $param->getDefaultValue();
+            } elseif ($param->allowsNull()) {
+                $args[] = null;
+            } else {
+                // Required scalar with no value provided — leave the
+                // method to throw/validate so the error reaches the client.
+                break;
+            }
+        }
+
+        return $args;
     }
 
     /**
