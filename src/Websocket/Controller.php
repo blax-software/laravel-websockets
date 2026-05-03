@@ -170,10 +170,17 @@ class Controller
                 'line' => $e->getFile() . ':' . $e->getLine(),
                 'stack' => $e->getTraceAsString(),
             ];
-            Log::error($e->getMessage(), $reload);
 
-            if (app()->bound('sentry')) {
-                app('sentry')->captureException($e);
+            $isValidation = $e instanceof \Illuminate\Validation\ValidationException;
+
+            if ($isValidation) {
+                Log::info('WS validation failed: ' . $e->getMessage(), $reload);
+            } else {
+                Log::error($e->getMessage(), $reload);
+
+                if (app()->bound('sentry')) {
+                    app('sentry')->captureException($e);
+                }
             }
 
             return self::send_error($connection, $message, $e->getMessage(), true);
