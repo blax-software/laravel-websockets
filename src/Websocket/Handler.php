@@ -648,7 +648,15 @@ class Handler implements MessageComponentInterface
                 }
 
                 try {
-                    if (app()->bound('sentry')) {
+                    // Honour the application's report policy (dontReport + the
+                    // framework's internal don't-report list) so expected
+                    // exceptions thrown by controllers — ValidationException,
+                    // AuthenticationException, etc. — don't flood Sentry from the
+                    // WS bridge the way the HTTP layer already suppresses them.
+                    $handler = app(\Illuminate\Contracts\Debug\ExceptionHandler::class);
+                    $shouldReport = ! method_exists($handler, 'shouldReport') || $handler->shouldReport($e);
+
+                    if ($shouldReport && app()->bound('sentry')) {
                         app('sentry')->captureException($e);
                     }
                 } catch (\Throwable $sentryError) {
