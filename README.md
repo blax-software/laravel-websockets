@@ -100,13 +100,15 @@ WebsocketService::send('metrics.tick', ['count' => 1], 'websocket');
 WebsocketService::broadcastExcept('chat.message', ['text' => 'Hi'], ['1234.1'], 'chat');
 ```
 
-### 3. Build a private/presence auth payload
+### 3. Per-connection session store
+
+Inside a WebSocket handler, `wsSession()` returns a Redis-backed key/value store **scoped to the
+current connection** that persists across messages on the same socket. It takes **no arguments**.
 
 ```php
-$auth = wsSession('private-updates', [
-    'user_id'   => 7,
-    'user_info' => ['name' => 'Jane'],
-]);
+wsSession()->increment('transmit_count');
+$count = wsSession()->get('transmit_count', 0);
+wsSession()->put('last_action', 'transmitted');
 ```
 
 ### 4. Watch live stats

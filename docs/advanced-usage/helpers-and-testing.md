@@ -37,16 +37,19 @@ if (ws_available()) {
 }
 ```
 
-### Generate auth payload
+### Per-connection session store
+
+`wsSession()` returns a Redis-backed key/value store scoped to the current WebSocket connection,
+persisting across messages on the same socket. It takes **no arguments** and returns `null` outside
+a WS message handler, so null-guard it.
 
 ```php
-$auth = wsSession('presence-room', [
-    'user_id' => 42,
-    'user_info' => ['name' => 'Amelia'],
-]);
+wsSession()?->increment('transmit_count');
+$count = wsSession()?->get('transmit_count', 0);
+wsSession()?->put('last_action', 'transmitted');
 ```
 
-Use this when you need to produce channel auth payloads in custom flows.
+Available methods: `get`, `put`, `has`, `forget`, `all`, `replace`, `increment`, `save`, `flush`.
 
 ## WebsocketService class
 
@@ -64,9 +67,9 @@ WebsocketService::broadcastExcept('chat.message', ['text' => 'Hi'], ['1234.1'], 
 
 `WebsocketService` also exposes lightweight in-process tracking helpers:
 
-- `setUserAuthed($socketId, $userId)`
+- `setUserAuthed($socketId, $user)`
 - `clearUserAuthed($socketId)`
-- `getAuth()`
+- `getAuth($socketId)`
 - `getAuthedUsers()`
 - `isUserConnected($userId)`
 - `getUserSocketIds($userId)`

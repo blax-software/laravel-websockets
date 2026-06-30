@@ -8,7 +8,7 @@ order: 2
 Laravel WebSockets can be installed via composer:
 
 ```bash
-composer require beyondcode/laravel-websockets
+composer require blax-software/laravel-websockets
 ```
 
 The package will automatically register a service provider.
