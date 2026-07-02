@@ -739,10 +739,20 @@ class Handler implements MessageComponentInterface
             // Same isolation rules apply: must not throw out of the loop.
             function () {
                 try {
-                    // Cleanup zombie process
-                    pcntl_waitpid(-1, $status, WNOHANG);
+                    // Reap ALL exited fork children, not just one. onClose fires on
+                    // socket EOF, which can precede the child's actual process exit —
+                    // so this call often reaps the *previous* message's child (or
+                    // nothing yet) rather than this one. Draining in a loop keeps
+                    // zombies from accumulating between messages; StartServer's
+                    // SIGCHLD + periodic reaper is the idle/straggler backstop.
+                    while (pcntl_waitpid(-1, $status, WNOHANG) > 0) {
+                        // reaped one child
+                    }
 
-                    // Free up a child slot and process any queued messages
+                    // Free up a child slot and process any queued messages.
+                    // NOTE: this decrement is per-child-SOCKET (one onClose per
+                    // child) and must stay here — do NOT tie it to the reap count
+                    // above, which reaps an arbitrary number of unrelated children.
                     $this->activeChildCount = max(0, $this->activeChildCount - 1);
                     $this->processDeferredMessages();
                 } catch (\Throwable $e) {

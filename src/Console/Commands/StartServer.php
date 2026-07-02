@@ -177,6 +177,10 @@ class StartServer extends Command
             $this->configurePcntlSignal();
             \Log::channel('websocket')->debug('PCNTL signals configured');
 
+            \Log::channel('websocket')->debug('Configuring zombie reaper...');
+            $this->configureZombieReaper();
+            \Log::channel('websocket')->debug('Zombie reaper configured');
+
             \Log::channel('websocket')->debug('Configuring broadcast socket...');
             $this->configureBroadcastSocket();
             \Log::channel('websocket')->debug('Broadcast socket configured');
@@ -476,6 +480,76 @@ class StartServer extends Command
             $this->triggerShutdown();
         });
         \Log::channel('websocket')->debug('SIGINT handler registered');
+    }
+
+    /**
+     * Reap any exited fork-per-message child processes.
+     *
+     * The fork-per-message model (Handler::forkWithSocketPair) spawns a child
+     * per inbound message; each child exit(0)s when it is done. If the parent
+     * never waitpid()s them, they linger as <defunct> zombies that consume PID
+     * table slots until pcntl_fork() itself fails. This drains ALL currently
+     * exited children in one non-blocking sweep (WNOHANG never blocks), so it is
+     * safe to call from a SIGCHLD handler, a periodic timer, or the shutdown
+     * path. It only ever reaps children that have already exited.
+     *
+     * @return int number of children reaped this sweep
+     */
+    protected function reapChildren(): int
+    {
+        if (! function_exists('pcntl_waitpid')) {
+            return 0;
+        }
+
+        $reaped = 0;
+        while (($pid = pcntl_waitpid(-1, $status, WNOHANG)) > 0) {
+            $reaped++;
+        }
+
+        return $reaped;
+    }
+
+    /**
+     * Install the zombie reaper for fork-per-message children.
+     *
+     * This is independent of, and a superset of, the IPC onClose reaper in
+     * Handler: onClose is keyed on SOCKET close, which routinely fires *before*
+     * the child's process actually exits, so it frequently reaps nothing and
+     * leaves the child behind as a zombie parented to this (live) serve process
+     * — where no PID 1 init can ever reach it. Two belt-and-suspenders reapers:
+     *
+     *   - SIGCHLD handler → prompt reaping the instant any child changes state.
+     *     Registered through the loop for consistency with the SIGTERM/SIGINT
+     *     handlers; the WNOHANG drain loop makes signal coalescing harmless.
+     *   - Periodic timer  → guaranteed backstop that also catches children which
+     *     crashed before their IPC socket was set up (no onClose ever fires) and
+     *     runs even during idle periods with no socket activity.
+     *
+     * @return void
+     */
+    protected function configureZombieReaper(): void
+    {
+        if (! function_exists('pcntl_waitpid')) {
+            \Log::channel('websocket')->warning('pcntl_waitpid unavailable — fork children cannot be reaped; zombies may accumulate.');
+            return;
+        }
+
+        // Prompt reaping: SIGCHLD fires as soon as a forked child exits.
+        $this->loop->addSignal(SIGCHLD, function () {
+            $this->reapChildren();
+        });
+        \Log::channel('websocket')->debug('SIGCHLD reaper registered');
+
+        // Guaranteed backstop: drains stragglers (e.g. a child that died before
+        // setupChild() so no onClose fires, or any child missed by SIGCHLD
+        // coalescing) even when there is no socket activity to trigger onClose.
+        $this->loop->addPeriodicTimer(10, function () {
+            $reaped = $this->reapChildren();
+            if ($reaped > 0) {
+                \Log::channel('websocket')->debug('Periodic reaper collected ' . $reaped . ' zombie child process(es)');
+            }
+        });
+        \Log::channel('websocket')->debug('Periodic zombie reaper registered (10s)');
     }
 
     /**
@@ -869,6 +943,11 @@ class StartServer extends Command
         // Stop the broadcast socket server
         $this->stopBroadcastSocket();
 
+        // Reap any already-exited fork children before we exit so they are not
+        // handed to PID 1 as orphans (still-running children are unavoidably
+        // reparented and reaped by the container init/supervisord).
+        $this->reapChildren();
+
         $this->loop->stop();
     }
 
@@ -908,6 +987,10 @@ class StartServer extends Command
 
                 // Stop the broadcast socket server
                 $this->stopBroadcastSocket();
+
+                // Reap any already-exited fork children before we exit (see
+                // triggerHardShutdown).
+                $this->reapChildren();
 
                 $this->loop->stop();
             });
