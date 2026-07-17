@@ -852,6 +852,14 @@ class StartServer extends Command
     /**
      * Build the server instance.
      *
+     * Binding retries on EADDRINUSE: during a restart (deploy, supervisor,
+     * websocket:steer restart-hard) the previous daemon's socket often
+     * lingers for a few seconds after SIGTERM. Crashing immediately turned
+     * every restart into a crash-loop of "Failed to listen" errors until the
+     * port freed up — waiting out the handover is the correct behaviour. A
+     * port that is STILL taken after the retry budget is a real conflict and
+     * rethrows.
+     *
      * @return void
      */
     protected function buildServer()
@@ -861,22 +869,44 @@ class StartServer extends Command
             'port' => $this->option('port'),
         ]);
 
-        $this->server = new ServerFactory(
-            $this->option('host'),
-            $this->option('port')
-        );
-
         if ($loop = $this->option('loop')) {
             \Log::channel('websocket')->debug('Using injected loop');
             $this->loop = $loop;
         }
 
-        \Log::channel('websocket')->debug('Configuring server with loop and routes...');
-        $this->server = $this->server
-            ->setLoop($this->loop)
-            ->withRoutes(WebSocketRouter::getRoutes())
-            ->setConsoleOutput($this->output)
-            ->createServer();
+        $maxAttempts = 30;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                \Log::channel('websocket')->debug('Configuring server with loop and routes...');
+                $this->server = (new ServerFactory(
+                    $this->option('host'),
+                    $this->option('port')
+                ))
+                    ->setLoop($this->loop)
+                    ->withRoutes(WebSocketRouter::getRoutes())
+                    ->setConsoleOutput($this->output)
+                    ->createServer();
+
+                break;
+            } catch (\RuntimeException $e) {
+                $isAddrInUse = str_contains($e->getMessage(), 'EADDRINUSE')
+                    || str_contains($e->getMessage(), 'Address already in use');
+
+                if (! $isAddrInUse || $attempt === $maxAttempts) {
+                    throw $e;
+                }
+
+                \Log::channel('websocket')->warning('Port busy (predecessor still shutting down?), retrying bind...', [
+                    'port' => $this->option('port'),
+                    'attempt' => $attempt,
+                    'max_attempts' => $maxAttempts,
+                ]);
+                $this->components->warn("Port {$this->option('port')} busy, retrying bind ({$attempt}/{$maxAttempts})...");
+
+                sleep(1);
+            }
+        }
 
         \Log::channel('websocket')->debug('Server created and ready');
     }
