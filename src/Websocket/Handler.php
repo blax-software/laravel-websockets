@@ -619,6 +619,29 @@ class Handler implements MessageComponentInterface
                 // Create mock that sends via socket pair
                 $mock = new MockConnectionSocketPair($connection, $ipc);
 
+                // Re-establish this fork's Laravel auth guard from the
+                // connection's user. authenticateConnection() logs the guard in,
+                // but it runs in the PARENT before forking — deferred messages
+                // fork later via processDeferredMessages() WITHOUT re-authenticating,
+                // and the parent's guard may since have been cleared (scheduleLogout)
+                // or reassigned to another connection. The mock still proxies the
+                // correct $connection->user (so the need_auth gate passes), yet
+                // auth()->user() / User::auth() would be null in this child —
+                // crashing any handler that reads the guard instead of ->user.
+                // Sync the guard to the connection here so every handler, deferred
+                // or not, sees a consistent authenticated user. setUser() (not
+                // login()) avoids re-firing the Login event on every message.
+                try {
+                    if ($mock->user) {
+                        Auth::setUser($mock->user);
+                    } elseif (Auth::hasUser()) {
+                        Auth::logout();
+                    }
+                } catch (\Throwable $authSyncError) {
+                    // Best-effort: the need_auth gate in controll_message() is
+                    // still the hard authorization check.
+                }
+
                 $this->executeControllerWithDbResilience(
                     $mock,
                     $channel,

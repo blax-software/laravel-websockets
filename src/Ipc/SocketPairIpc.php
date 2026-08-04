@@ -151,7 +151,13 @@ class SocketPairIpc
 
         // Newline-delimited framing
         $message = $data . "\n";
-        $written = socket_write($this->sockets[1], $message, strlen($message));
+        // Suppress the write warning: when the WS client disconnects mid-response
+        // the parent tears down its read end, so the child's next write races a
+        // closed pipe (EPIPE / "Broken pipe"). That warning is otherwise promoted
+        // to a reported ErrorException and floods GlitchTip for a benign, expected
+        // disconnect. The false-return is still handled by the caller. Mirrors the
+        // existing @fwrite in Broadcast/BroadcastClient.php.
+        $written = @socket_write($this->sockets[1], $message, strlen($message));
 
         return $written === strlen($message);
     }
