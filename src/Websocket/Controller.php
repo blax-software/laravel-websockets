@@ -51,6 +51,34 @@ class Controller
      */
     public function unboot(): void {}
 
+    /**
+     * Shared platform-maintenance flag, read from the same DB-cache key the host
+     * app writes via App\Support\Maintenance::CACHE_KEY. Hardcoded (not config)
+     * to dodge the fork-child package-config-merge gap, and wrapped so a cache
+     * hiccup can never wedge the socket. Keep the key string in sync with the app.
+     */
+    protected static function maintenanceActive(): bool
+    {
+        try {
+            return (bool) cache()->get('platform:maintenance', false);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    protected static function maintenanceMessage(): string
+    {
+        try {
+            $message = cache()->get('platform:maintenance:message');
+        } catch (\Throwable) {
+            $message = null;
+        }
+
+        return is_string($message) && $message !== ''
+            ? $message
+            : 'We are performing scheduled maintenance and will be back shortly.';
+    }
+
     public static function controll_message(
         ConnectionInterface $connection,
         PrivateChannel|Channel|PresenceChannel $channel,
@@ -131,6 +159,21 @@ class Controller
                     $controller->unboot();
                     return;
                 }
+            }
+
+            // Platform maintenance freeze. Once auth (incl. the self-heal above)
+            // has resolved the user, refuse every controller event for non-admins
+            // so a deploy/migration can run without clients mutating state. Admins
+            // bypass to smoke-test. The `auth` handshake + channel introspection
+            // are single-part events handled earlier, so a maintainer can still
+            // authenticate to obtain the bypass.
+            if (self::maintenanceActive() && ! ($connection->user?->is_admin ?? false)) {
+                $controller->error([
+                    'message' => self::maintenanceMessage(),
+                    'maintenance' => true,
+                ]);
+                $controller->unboot();
+                return;
             }
 
             if (! method_exists($controllerClass, $method)) {
