@@ -537,6 +537,55 @@ class Handler implements MessageComponentInterface
     }
 
     /**
+     * Reset every service connection the child inherited from the parent after a
+     * fork().
+     *
+     * The child inherits the parent's Redis socket fds; using any of them
+     * interleaves requests on the shared socket and desyncs the predis protocol
+     * on BOTH the child AND the parent (`unserialize(): Error at offset 0 of N
+     * bytes` / "Error while reading line from the server"). Once session + cache
+     * live on Redis, the parent's authenticateConnection() opens Redis fds before
+     * it forks, so the child must drop EVERY inherited connection (#1445).
+     *
+     * Extracted so it can be regression-tested: a future refactor dropping a
+     * connection from the loop, or breaking the client/options skip, is exactly
+     * what re-opens the desync flood.
+     */
+    protected function resetInheritedConnectionsInChild(): void
+    {
+        // 1) Actively disconnect each configured connection — this closes ONLY the
+        //    child's fd copy (predis disconnect just fcloses, it sends no command,
+        //    so the parent's socket is untouched), turning any accidental later
+        //    reuse into a fresh reconnect instead of a desync.
+        try {
+            $redisManager = app('redis');
+            foreach (config('database.redis', []) as $redisName => $redisConf) {
+                // Skip non-connection entries (client, options, clusters, …).
+                if (! is_array($redisConf) || ! isset($redisConf['host'])) {
+                    continue;
+                }
+                try {
+                    $redisManager->connection($redisName)->disconnect();
+                } catch (\Throwable $e) {
+                    // per-connection best-effort
+                }
+            }
+        } catch (\Throwable $e) {
+            // best-effort; the forgetInstance() calls below still force fresh managers
+        }
+
+        // 2) Forget the singletons so the next cache()/session()/Redis() call
+        //    lazily rebuilds with a fresh socket. session/session.store were the
+        //    gap: once the session store is Redis-backed they hold their OWN
+        //    inherited Redis connection, which the cache/redis purge never reset.
+        app()->forgetInstance('cache');
+        app()->forgetInstance('cache.store');
+        app()->forgetInstance('redis');
+        app()->forgetInstance('session');
+        app()->forgetInstance('session.store');
+    }
+
+    /**
      * Fork with event-driven socket pair IPC (no polling!)
      * Parent is notified INSTANTLY when child sends data
      *
@@ -590,44 +639,10 @@ class Handler implements MessageComponentInterface
                 // This saves ~5-15ms for methods that don't use the database
                 DB::disconnect();
 
-                // Purge inherited Redis/cache/session connections from the parent.
-                // After fork(), the child inherits the parent's Redis socket fds; using
-                // any of them interleaves requests on the shared socket and desyncs the
-                // predis protocol on BOTH the child AND the parent (unserialize "offset 0
-                // of N bytes" / "Error while reading line"). Once session + cache live on
-                // Redis, the parent's authenticateConnection() opens Redis fds before it
-                // forks, so the child must drop EVERY inherited connection.
-                //
-                // 1) Actively disconnect each configured connection — this closes ONLY the
-                //    child's fd copy (predis disconnect just fcloses, it sends no command,
-                //    so the parent's socket is untouched), turning any accidental later
-                //    reuse into a fresh reconnect instead of a desync.
-                try {
-                    $redisManager = app('redis');
-                    foreach (config('database.redis', []) as $redisName => $redisConf) {
-                        // Skip non-connection entries (client, options, clusters, …).
-                        if (! is_array($redisConf) || ! isset($redisConf['host'])) {
-                            continue;
-                        }
-                        try {
-                            $redisManager->connection($redisName)->disconnect();
-                        } catch (\Throwable $e) {
-                            // per-connection best-effort
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    // best-effort; the forgetInstance() calls below still force fresh managers
-                }
-
-                // 2) Forget the singletons so the next cache()/session()/Redis() call
-                //    lazily rebuilds with a fresh socket. session/session.store were the
-                //    gap: once the session store is Redis-backed they hold their OWN
-                //    inherited Redis connection, which the cache/redis purge never reset.
-                app()->forgetInstance('cache');
-                app()->forgetInstance('cache.store');
-                app()->forgetInstance('redis');
-                app()->forgetInstance('session');
-                app()->forgetInstance('session.store');
+                // Drop every Redis/cache/session connection the child inherited from
+                // the parent — a shared predis socket desyncs both sides. Full
+                // rationale lives on the extracted, regression-tested method (#1445).
+                $this->resetInheritedConnectionsInChild();
 
                 // Configure DB reconnect-on-lost-connection for this child.
                 // If MySQL returns "Too many connections" or "server has gone away",
