@@ -521,14 +521,10 @@ class Handler implements MessageComponentInterface
             // Validator refresh failed, continue anyway
         }
 
-        // 9. Clear event dispatcher cache (for fresh event/listener bindings)
-        try {
-            if ($container->bound('events')) {
-                $container->forgetInstance('events');
-            }
-        } catch (\Throwable $e) {
-            // Events refresh failed, continue anyway
-        }
+        // 9. The event dispatcher is deliberately KEPT: listeners are registered
+        //    once by the service providers (Event::listen in boot()), which never
+        //    run again in this child. A forgotten instance would be rebuilt empty
+        //    and every event fired from the controller would reach no listener.
 
         // 10. Clear WebSocket ControllerResolver cache for fresh controller loading
         ControllerResolver::clearCache();
