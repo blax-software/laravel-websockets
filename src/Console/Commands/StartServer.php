@@ -89,6 +89,25 @@ class StartServer extends Command
     protected string $cacheStore = 'file';
 
     /**
+     * Seconds the soft shutdown waits after closing connections, so Ratchet can
+     * run the handler's onClose (channel cleanup) before the loop stops.
+     */
+    protected const SOFT_SHUTDOWN_GRACE_SECONDS = 1.0;
+
+    /**
+     * Hard cap on a soft shutdown. Whatever state the connections are in, the
+     * loop stops after this long, so a stuck close can never leave the server
+     * declining every new connection indefinitely.
+     */
+    protected const SOFT_SHUTDOWN_DEADLINE_SECONDS = 5.0;
+
+    /**
+     * Whether a soft shutdown already stopped the loop (the grace timer, the
+     * error path and the deadline may all try).
+     */
+    protected bool $softShutdownFinished = false;
+
+    /**
      * Initialize the command.
      *
      * @return void
@@ -998,32 +1017,63 @@ class StartServer extends Command
         \Log::channel('websocket')->debug('Declining new connections...');
         $channelManager->declineNewConnections();
 
-        // Get all local connections and close them. They will
-        // be automatically be unsubscribed from all channels.
+        // Whatever happens below, the loop stops within the deadline.
+        $this->loop->addTimer(static::SOFT_SHUTDOWN_DEADLINE_SECONDS, function () {
+            $this->finishSoftShutdown('Soft shutdown deadline reached, stopping loop...');
+        });
+
+        // Close all local connections. Ratchet runs the handler's onClose (which
+        // unsubscribes the connection from its channels) once each stream closes,
+        // so the handler must not be called here as well. Handler::onClose returns
+        // void; chaining ->then() on it threw, the error was lost as a promise
+        // rejection and the loop never stopped.
         \Log::channel('websocket')->debug('Getting local connections to close...');
         $channelManager->getLocalConnections()
             ->then(function ($connections) {
                 \Log::channel('websocket')->debug('Closing connections...', ['count' => count($connections)]);
-                return all(collect($connections)->map(function ($connection) {
-                    return app('websockets.handler')
-                        ->onClose($connection)
-                        ->then(function () use ($connection) {
-                            $connection->close();
-                        });
-                })->toArray());
+
+                foreach ($connections as $connection) {
+                    try {
+                        $connection->close();
+                    } catch (\Throwable $e) {
+                        \Log::channel('websocket')->warning('Closing a connection failed during soft shutdown', [
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                $this->loop->addTimer(static::SOFT_SHUTDOWN_GRACE_SECONDS, function () {
+                    $this->finishSoftShutdown('All connections closed, stopping loop...');
+                });
             })
-            ->then(function () {
-                \Log::channel('websocket')->debug('All connections closed, stopping loop...');
-
-                // Stop the broadcast socket server
-                $this->stopBroadcastSocket();
-
-                // Reap any already-exited fork children before we exit (see
-                // triggerHardShutdown).
-                $this->reapChildren();
-
-                $this->loop->stop();
+            ->then(null, function ($reason) {
+                \Log::channel('websocket')->warning('Soft shutdown could not list connections', [
+                    'error' => $reason instanceof \Throwable ? $reason->getMessage() : (string) $reason,
+                ]);
+                $this->finishSoftShutdown('Stopping loop after soft shutdown error...');
             });
+    }
+
+    /**
+     * Stop the loop once at the end of a soft shutdown.
+     */
+    protected function finishSoftShutdown(string $message): void
+    {
+        if ($this->softShutdownFinished) {
+            return;
+        }
+        $this->softShutdownFinished = true;
+
+        \Log::channel('websocket')->debug($message);
+
+        // Stop the broadcast socket server
+        $this->stopBroadcastSocket();
+
+        // Reap any already-exited fork children before we exit (see
+        // triggerHardShutdown).
+        $this->reapChildren();
+
+        $this->loop->stop();
     }
 
     /**

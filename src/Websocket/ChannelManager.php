@@ -96,6 +96,12 @@ class ChannelManager extends LocalChannelManager
      */
     public function unsubscribeFromAllChannels(ConnectionInterface $connection) : PromiseInterface
     {
+        // A connection declined in onOpen (e.g. during a soft shutdown) never got
+        // an app and joined no channels. Same guard as LocalChannelManager.
+        if (! isset($connection->app)) {
+            return Helpers::createFulfilledPromise(false);
+        }
+
         return $this->getGlobalChannels($connection->app->id)
             ->then(function ($channels) use ($connection) {
                 foreach ($channels as $channel) {
